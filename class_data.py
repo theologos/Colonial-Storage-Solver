@@ -49,6 +49,22 @@ class DataLocation:
             return {}
     
     def load_topology(self, filepath):
+        '''
+        Example: 
+         topo_i:
+        {310: {'01': {'A': 0}}, 311: {'01': {'A': 0}}, 312: {'01': {'D': 0}}, 313: {'01': {'A': 0}}, 314: {'01': {'A': 0}}, 
+         316: {'01': {'D': 0}}, 317: {'01': {'A': 0}}, 330: {'01': {'A': 0}}, 331: {'01': {'A': 0}}, 332: {'01': {'A': 0}}, 
+         333: {'01': {'A': 0}}, 334: {'01': {'A': 0}}, 336: {'01': {'A': 0}}, 337: {'01': {'D': 0}}, 338: {'01': {'A': 0}}, 339: {'01': {'A': 0}}, 
+         350: {'02': {'54': 0}}, 351: {'02': {'54': 0}}, 352: {'02': {'54': 0}}, 353: {'02': {'54': 0}}, 354: {'02': {'54': 0}}, 
+         360: {'02': {'62': 0}}, 361: {'02': {'62': 0}}, 363: {'02': {'62': 0}}, 370: {'02': {'54': 0}}, 371: {'02': {'62': 0}}, 
+         373: {'02': {'62': 0}}, 374: {'02': {'62': 0}}, 375: {'02': {'62': 0}}, 376: {'02': {'62': 0}}}
+
+         topo_o:
+         {310: {'13': {'A': 0}, '14': {'A': 0}, '15': {'A': 0}, '17': {'A': 0}, '18': {'A': 0}, '19': {'A': 0}, '1A': {'A': 0}}, 
+          311: {'13': {'A': 0}, '14': {'A': 0}, '15': {'A': 0}, '17': {'A': 0}, '18': {'A': 0}, '19': {'A': 0}, '1A': {'A': 0}}, 
+          312: {'13': {'D': 0}, '14': {'D': 0}, '15': {'D': 0}}
+        
+        '''
         try:
             # Read the CSV file into a DataFrame
             df_read = pd.read_csv(filepath, dtype={'Tank': int, 'Line': str, 'Product': str})
@@ -432,119 +448,96 @@ class DataOptimization(DataCycle):
     def function_index(self, Time, topo_i, topo_o):
 
         ret = {}
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        # 
+
+        '''
+        This is a list of tuples that will be used later as a blueprint for defining the state space of the model variables.
+        For example, a sample of i_index can be:
+        [(310, '01', 'A', 0), (310, '01', 'A', 1), (310, '01', 'A', 2), (310, '01', 'A', 3)]
+        ''' 
+        ret['i'] = [(tank, line, product, time) for tank in topo_i for line in topo_i[tank] for product in topo_i[tank][line] for time in Time]
+
+        '''
+        For example, a sample of o_index can be:
+        [(310, '13', 'A', 0), (310, '13', 'A', 1), (310, '13', 'A', 2), (310, '13', 'A', 3), (310, '13', 'A', 4), 
+         (310, '13', 'A', 5), (310, '13', 'A', 6), (310, '13', 'A', 7), (310, '13', 'A', 8), (310, '13', 'A', 9)]
+        '''    
+        ret['o'] = [(tank, line, product, time) for tank in topo_o for line in topo_o[tank] for product in topo_o[tank][line] for time in Time]
+
+        '''
+        For example, a sample of x_index can be:
+        [(310, 'A', 0), (310, 'A', 1), (310, 'A', 2), (310, 'A', 3), (310, 'A', 4), (310, 'A', 5), 
+         (310, 'A', 6), (310, 'A', 7), (310, 'A', 8), (310, 'A', 9)]
+         
+        topo_x:
+        {310: 'A', 311: 'A', 312: 'D', 313: 'A', 314: 'A', 316: 'D', 317: 'A', 330: 'A', 331: 'A', 332: 'A', 
+         333: 'A', 334: 'A', 336: 'A', 337: 'D', 338: 'A', 339: 'A', 350: '54', 351: '54', 352: '54', 353: '54', 
+         354: '54', 360: '62', 361: '62', 363: '62', 370: '54', 371: '62', 373: '62', 374: '62', 375: '62', 376: '62'}
+        '''
+        combined_dict = {**topo_i, **topo_o}
         topo_x = {}
-        Tanks_ = list(set(list(topo_i.keys()) + list(topo_o.keys())))
-        for tank in Tanks_:
-            prods = []
-            if tank in topo_i:
-                for line in topo_i[tank]:
-                    for prod in topo_i[tank][line]:
-                        prods.append(prod)
-            if tank in topo_o:
-                for line in topo_o[tank]:
-                    for prod in topo_o[tank][line]:
-                        prods.append(prod)
-            prods = set(prods)        
-            for prod in prods:
-                topo_x[tank] = {prod:0}
+        for outer_key, middle_dict in combined_dict.items():
+            for middle_key, inner_dict in middle_dict.items():
+                for inner_key in inner_dict.keys():
+                    topo_x[outer_key] = inner_key
+                    break  # Since we only need the first key, we can break after finding it
 
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #   
-        i_index = []
-        for tank in topo_i:
-            for line in topo_i[tank]:
-                for product in topo_i[tank][line]:
-                    for time in Time:
-                        i_index.append((tank, line, product, time))
+        ret['x'] = [(tank, topo_x[tank], time) for tank in topo_x for time in Time]
 
-        ret['i'] = i_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #    
-        o_index = []
-        for tank in topo_o:
-            for line in topo_o[tank]:
-                for product in topo_o[tank][line]:
-                    for time in Time:
-                        o_index.append((tank, line, product, time))  
+        '''
+        For example, a sample of mi_index can be:
+        [('02', '62', 0), ('02', '62', 1), ('02', '62', 2), ('02', '62', 3), ('02', '62', 4), ('02', '62', 5), 
+         ('02', '62', 6), ('02', '62', 7), ('02', '62', 8), ('02', '62', 9)]
+        '''
+        tups = {(tup[1], tup[2]) for tup in ret['i'] if tup[3] == 0}
+        ret['mi'] = [(line, product, time) for line, product in tups for time in Time]
 
-        ret['o'] = o_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #            
-        x_index = []
-        for tank in topo_x:
-            for prod in topo_x[tank]:
-                for time in Time:
-                    x_index.append((tank, prod, time))            
+        '''
+        For example, a sample of mo_index can be:
+        [('14', 'A', 0), ('14', 'A', 1), ('14', 'A', 2), ('14', 'A', 3), ('14', 'A', 4), ('14', 'A', 5), 
+         ('14', 'A', 6), ('14', 'A', 7), ('14', 'A', 8), ('14', 'A', 9)]
+        '''
+        tups = {(tup[1], tup[2]) for tup in ret['o'] if tup[3] == 0}
+        ret['mo'] = [(line, product, time) for line, product in tups for time in Time]
 
+        '''
+        For example, a sample of li_index can be:
+        [('01', 'D', 136), ('01', 'A', 27), ('02', '62', 185), ('01', 'D', 145), ('01', 'A', 36), ('02', '54', 63), 
+         ('02', '54', 72), ('01', 'A', 45), ('02', '54', 81), ('01', 'A', 54)]
+        '''            
+        ret['li'] = list({tup[1:4] for tup in ret['i']})
 
-        ret['x'] = x_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #            
-        mi_index = [] 
-        tups = set([tup[1:3] for tup in i_index if tup[3] == 0])
-        for tup in tups:
-            for time in Time:
-                mi_index.append(tup + (time,))
+        '''
+        For example, a sample of lo_index can be:
+        [('13', '54', 141), ('19', '62', 126), ('14', 'A', 111), ('15', 'A', 0), ('13', 'A', 39), ('17', 'A', 138), 
+         ('14', '54', 68), ('19', '54', 31), ('17', '54', 95), ('18', 'D', 86)]
+        ''' 
+        ret['lo'] = list({tup[1:4] for tup in ret['o']})
 
-        mo_index = [] 
-        tups = set([tup[1:3] for tup in o_index if tup[3] == 0])
-        for tup in tups:
-            for time in Time:
-                mo_index.append(tup + (time,))    
+        '''
+        For example, a sample of ti_index can be:
+        [(353, '02', '54', 121), (360, '02', '62', 71), (374, '02', '62', 157), (354, '02', '54', 71), (317, '01', 'A', 54), 
+         (313, '01', 'A', 85), (331, '01', 'A', 78), (312, '01', 'D', 68), (314, '01', 'A', 87), (330, '01', 'A', 43)]
+        '''               
+        ret['ti'] = list(set(ret['i']))
+        
+        '''
+        For example, a sample of to_index can be:
+        [(310, '19', 'A', 9), (361, '2A', '62', 117), (363, '2A', '62', 168), (371, '17', '62', 183), (333, '17', 'A', 139), 
+         (373, '2A', '62', 38), (338, '14', 'A', 93), (350, '19', '54', 95), (351, '17', '54', 16), (337, '13', 'D', 94)]
+        ''' 
+        ret['to'] = list(set(ret['o']))
 
+        '''
+        For example, a sample of tlpo_index can be:
+        [(339, '17', 'A'), (310, '13', 'A'), (337, '18', 'D'), (363, '14', '62'), (352, '20', '54'), (311, '17', 'A'), 
+         (334, '17', 'A'), (363, '17', '62'), (360, '20', '62'), (376, '17', '62')]
+        '''              
+        ret['tlpo'] = list({tup[:3] for tup in ret['o']})
 
-        ret['mi'] = mi_index
-        ret['mo'] = mo_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        li_index = []
-        lst = set([tup[1:4] for tup in i_index])
-        for tup in lst:
-            li_index.append(tup)   
-
-        lo_index = []
-        lst = set([tup[1:4] for tup in o_index])
-        for tup in lst:
-            lo_index.append(tup) 
-
-        ret['li'] = li_index
-        ret['lo'] = lo_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        ti_index = []
-        lst = set([tup[0:4] for tup in i_index])
-        for tup in lst:
-            ti_index.append(tup) 
-
-        to_index = []
-        lst = set([tup[0:4] for tup in o_index])
-        for tup in lst:
-            to_index.append(tup) 
-
-        ret['ti'] = ti_index
-        ret['to'] = to_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        tlpo_index = []
-        lst = set([tup[0:3] for tup in o_index])
-        for tup in lst:
-            tlpo_index.append(tup)
-
-        ret['tlpo'] = tlpo_index
-
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
+        '''
+        For example, a sample of tank_index can be:
+        [310, 311, 312, 313, 314, 316, 317, 330, 331, 332]
+        '''              
         tank_index = []
         Tanks_ = list(set(list(topo_i.keys()) + list(topo_o.keys())))
         for tank in Tanks_:
@@ -552,9 +545,6 @@ class DataOptimization(DataCycle):
 
         ret['tank'] = tank_index
 
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #    
         return (ret)    
         
 class DataOptimizations():
