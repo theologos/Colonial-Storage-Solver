@@ -17,6 +17,8 @@ import io
 from datetime import datetime, timedelta
 from dash import Dash, dcc, html, Input, Output, State, ALL
 import dash_bootstrap_components as dbc
+from mip import Model
+from pulp import LpProblem
 
 pd.options.mode.chained_assignment = None
 
@@ -55,7 +57,6 @@ if __name__ == "__main__":
         # Set objective
         inputs['objective'] = "selection1"
         
-        #print(inputs)
-        #print("Hi")
         # Call the optimization model
         ret = OptimizationModel.model_stage3(ID, inputs)
+

@@ -11,227 +11,97 @@ from class_analysis import DataAnalysis
 
 class OptimizationModel:
 
-    @staticmethod
-    def function_index(Time, topo_i, topo_o):
-
-        ret = {}
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        # 
-        topo_x = {}
-        Tanks_ = list(set(list(topo_i.keys()) + list(topo_o.keys())))
-        for tank in Tanks_:
-            prods = []
-            if tank in topo_i:
-                for line in topo_i[tank]:
-                    for prod in topo_i[tank][line]:
-                        prods.append(prod)
-            if tank in topo_o:
-                for line in topo_o[tank]:
-                    for prod in topo_o[tank][line]:
-                        prods.append(prod)
-            prods = set(prods)        
-            for prod in prods:
-                topo_x[tank] = {prod:0}
-
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #   
-        i_index = []
-        for tank in topo_i:
-            for line in topo_i[tank]:
-                for product in topo_i[tank][line]:
-                    for time in Time:
-                        i_index.append((tank, line, product, time))
-
-        ret['i'] = i_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #    
-        o_index = []
-        for tank in topo_o:
-            for line in topo_o[tank]:
-                for product in topo_o[tank][line]:
-                    for time in Time:
-                        o_index.append((tank, line, product, time))  
+    # @staticmethod
+    # def function_data(ID, inputs):
         
-        ret['o'] = o_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #            
-        x_index = []
-        for tank in topo_x:
-            for prod in topo_x[tank]:
-                for time in Time:
-                    x_index.append((tank, prod, time))            
+    #     i_index, o_index, x, i, o, p, q, T = (
+    #         inputs['index']['i'],
+    #         inputs['index']['o'],
+    #         inputs['x'],
+    #         inputs['i'],
+    #         inputs['o'],
+    #         inputs['p'],
+    #         inputs['q'],
+    #         inputs['T']
+    #     )
 
+    #     data = []
+    #     tups = [tup for tup in i_index]
+    #     for tup in tups:
+    #         tank = tup[0]; line = tup[1]; prod = tup[2]; j = tup[3];
+    #         if p[tank, line, prod, j].X > 0 and i[tank, line, prod, j].X > 0:
+    #             row = [j, tank, line, prod, x[tank, prod, j].X, i[tank, line, prod, j].X]
+    #             data.append(row)
+
+    #     tups = [tup for tup in o_index]
+    #     for tup in tups:
+    #         tank = tup[0]; line = tup[1]; prod = tup[2]; j = tup[3];
+    #         if q[tank, line, prod, j].X > 0 and o[tank, line, prod, j].X > 0:
+    #             row = [j, tank, line, prod, x[tank, prod, j].X, o[tank, line, prod, j].X]
+    #             data.append(row)
+
+    #     data = pd.DataFrame (data, columns = ['Time', 'Tank', 'Line', 'Product', 'x', 'io'])    
         
-        ret['x'] = x_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #            
-        mi_index = [] 
-        tups = set([tup[1:3] for tup in i_index if tup[3] == 0])
-        for tup in tups:
-            for time in Time:
-                mi_index.append(tup + (time,))
+    #     data1 = data.groupby(['Line', 'Product']).agg({'Time':'min'}).reset_index().rename(columns = {"Time":"Time_min"})
+    #     data2 = data.groupby(['Line', 'Product']).agg({'Time':'max'}).reset_index().rename(columns = {"Time":"Time_max"})
+    #     data = data1.merge(data2, on=["Line", "Product"])
 
-        mo_index = [] 
-        tups = set([tup[1:3] for tup in o_index if tup[3] == 0])
-        for tup in tups:
-            for time in Time:
-                mo_index.append(tup + (time,))    
+    #     def order(df):
+    #         if (df['Product'] == 'A'):
+    #             return 1
+    #         elif (df['Product'] == 'D'):
+    #             return 2
+    #         elif (df['Product'] == '54'):
+    #             return 3
+    #         elif (df['Product'] == '62'):
+    #             return 4
+    #     data['Order'] = data.apply(order, axis = 1)
 
-        
-        ret['mi'] = mi_index
-        ret['mo'] = mo_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        li_index = []
-        lst = set([tup[1:4] for tup in i_index])
-        for tup in lst:
-            li_index.append(tup)   
+    #     data = data.sort_values(['Line', 'Order'], ascending = [True, True])
+    #     #data
+    #     data['Time_min_1'] = data.groupby(['Line'])['Time_max'].shift(1)
+    #     data['Time_max_1'] = data.groupby(['Line'])['Time_min'].shift(-1)
+    #     data['Time_min_1'] = data['Time_min_1'].fillna(data['Time_min'])
+    #     data['Time_max_1'] = data['Time_max_1'].fillna(data['Time_max'])
 
-        lo_index = []
-        lst = set([tup[1:4] for tup in o_index])
-        for tup in lst:
-            lo_index.append(tup) 
+    #     data['Time_min_f'] = (data['Time_min'] + data['Time_min_1'])/2
+    #     data['Time_max_f'] = (data['Time_max'] + data['Time_max_1'])/2
 
-        ret['li'] = li_index
-        ret['lo'] = lo_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        ti_index = []
-        lst = set([tup[0:4] for tup in i_index])
-        for tup in lst:
-            ti_index.append(tup) 
+    #     def fun(df):
+    #         return math.ceil(df['Time_min_f'])
+    #     data['Time_min_f'] = data.apply(fun, axis = 1)
 
-        to_index = []
-        lst = set([tup[0:4] for tup in o_index])
-        for tup in lst:
-            to_index.append(tup) 
+    #     def fun(df):
+    #         return math.ceil(df['Time_max_f'])
+    #     data['Time_max_f'] = data.apply(fun, axis = 1)
 
-        ret['ti'] = ti_index
-        ret['to'] = to_index
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        tlpo_index = []
-        lst = set([tup[0:3] for tup in o_index])
-        for tup in lst:
-            tlpo_index.append(tup)
-            
-        ret['tlpo'] = tlpo_index
-        
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #              
-        tank_index = []
-        Tanks_ = list(set(list(topo_i.keys()) + list(topo_o.keys())))
-        for tank in Tanks_:
-            tank_index.append(tank,)
-            
-        ret['tank'] = tank_index
-        
-        #-------------------------------------------------------------------------------------------------------------              
-        #
-        #    
-        return (ret)
+    #     data['Order'] = data[['Line', 'Order']].groupby(['Line']).rank(ascending=False)
+    #     def fun(df):
+    #         if df['Order'] != 1:
+    #             return df['Time_max_f'] - 1
+    #         else:
+    #             return df['Time_max_f']
+    #     data['Time_max_f'] = data.apply(fun, axis = 1)
 
+    #     def fun(df):
+    #         if df['Order'] == 1:
+    #             return T-1
+    #         else:
+    #             return df['Time_max_f']
+    #     data['Time_max_f'] = data.apply(fun, axis = 1)
 
-    @staticmethod
-    def function_data(ID, inputs):
-        
-        i_index, o_index, x, i, o, p, q, T = (
-            inputs['index']['i'],
-            inputs['index']['o'],
-            inputs['x'],
-            inputs['i'],
-            inputs['o'],
-            inputs['p'],
-            inputs['q'],
-            inputs['T']
-        )
+    #     def line(df):
+    #         if (df['Line'] in [1]):
+    #             return '01'
+    #         elif (df['Line'] in [2]):
+    #             return '02'
+    #         else:
+    #             return str(df['Line'])
 
-        data = []
-        tups = [tup for tup in i_index]
-        for tup in tups:
-            tank = tup[0]; line = tup[1]; prod = tup[2]; j = tup[3];
-            if p[tank, line, prod, j].X > 0 and i[tank, line, prod, j].X > 0:
-                row = [j, tank, line, prod, x[tank, prod, j].X, i[tank, line, prod, j].X]
-                data.append(row)
+    #     data['Line'] = data.apply(line, axis = 1)
+    #     data.to_csv("results/opt_timeline_" + str(ID) + ".csv")
 
-        tups = [tup for tup in o_index]
-        for tup in tups:
-            tank = tup[0]; line = tup[1]; prod = tup[2]; j = tup[3];
-            if q[tank, line, prod, j].X > 0 and o[tank, line, prod, j].X > 0:
-                row = [j, tank, line, prod, x[tank, prod, j].X, o[tank, line, prod, j].X]
-                data.append(row)
-
-        data = pd.DataFrame (data, columns = ['Time', 'Tank', 'Line', 'Product', 'x', 'io'])    
-        
-        data1 = data.groupby(['Line', 'Product']).agg({'Time':'min'}).reset_index().rename(columns = {"Time":"Time_min"})
-        data2 = data.groupby(['Line', 'Product']).agg({'Time':'max'}).reset_index().rename(columns = {"Time":"Time_max"})
-        data = data1.merge(data2, on=["Line", "Product"])
-
-        def order(df):
-            if (df['Product'] == 'A'):
-                return 1
-            elif (df['Product'] == 'D'):
-                return 2
-            elif (df['Product'] == '54'):
-                return 3
-            elif (df['Product'] == '62'):
-                return 4
-        data['Order'] = data.apply(order, axis = 1)
-
-        data = data.sort_values(['Line', 'Order'], ascending = [True, True])
-        #data
-        data['Time_min_1'] = data.groupby(['Line'])['Time_max'].shift(1)
-        data['Time_max_1'] = data.groupby(['Line'])['Time_min'].shift(-1)
-        data['Time_min_1'] = data['Time_min_1'].fillna(data['Time_min'])
-        data['Time_max_1'] = data['Time_max_1'].fillna(data['Time_max'])
-
-        data['Time_min_f'] = (data['Time_min'] + data['Time_min_1'])/2
-        data['Time_max_f'] = (data['Time_max'] + data['Time_max_1'])/2
-
-        def fun(df):
-            return math.ceil(df['Time_min_f'])
-        data['Time_min_f'] = data.apply(fun, axis = 1)
-
-        def fun(df):
-            return math.ceil(df['Time_max_f'])
-        data['Time_max_f'] = data.apply(fun, axis = 1)
-
-        data['Order'] = data[['Line', 'Order']].groupby(['Line']).rank(ascending=False)
-        def fun(df):
-            if df['Order'] != 1:
-                return df['Time_max_f'] - 1
-            else:
-                return df['Time_max_f']
-        data['Time_max_f'] = data.apply(fun, axis = 1)
-
-        def fun(df):
-            if df['Order'] == 1:
-                return T-1
-            else:
-                return df['Time_max_f']
-        data['Time_max_f'] = data.apply(fun, axis = 1)
-
-        def line(df):
-            if (df['Line'] in [1]):
-                return '01'
-            elif (df['Line'] in [2]):
-                return '02'
-            else:
-                return str(df['Line'])
-
-        data['Line'] = data.apply(line, axis = 1)
-        data.to_csv("results/opt_timeline_" + str(ID) + ".csv")
-
-        return (data)
+    #     return (data)
 
     @staticmethod
     def model_baseline_const1(model, inputs):
@@ -1250,92 +1120,6 @@ class OptimizationModel:
                 
         return (model)
 
-    # def model_const7(model, i_index, p, i):
-        
-    #     #-------------------------------------------------------------------------------------------------------------                    
-    #     #
-    #     #
-    #     lst = list(set([t[0:4] for t in i_index]))  
-    #     for tup in lst:
-    #         tank = tup[0]; line = tup[1]; prod = tup[2]; time = tup[3]
-    #         if tank == '312' and time <= 14:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)
-    #         if tank == '313' and time <= 6:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)    
-    #         if tank == '314' and time <= 13:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)   
-    #         if tank == '316' and time <= 19:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)
-    #         if tank == '317' and time <= 17:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)
-    #         if tank == '330' and time <= 22:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0) 
-    #         if tank == '331' and time <= 2:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)  
-    #         if tank == '332' and time <= 15:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)      
-    #         if tank == '333' and time <= 1:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)      
-    #         if tank == '334' and time <= 6:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)       
-    #         if tank == '336' and time <= 7:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)                  
-    #         if tank == '337' and time <= 23:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)       
-    #         if tank == '338' and time <= 19:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)        
-    #         if tank == '339' and time <= 17:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)  
-    #         if tank == '350' and time <= 16:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)
-    #         if tank == '351' and time <= 18:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)  
-    #         if tank == '352' and time <= 21:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)   
-    #         if tank == '353' and time <= 6:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0) 
-    #         if tank == '354' and time <= 17:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)
-    #         if tank == '361' and time <= 2:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)   
-    #         if tank == '371' and time <= 19:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0) 
-    #         if tank == '373' and time <= 8:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0) 
-    #         if tank == '374' and time <= 14:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0) 
-    #         if tank == '375' and time <= 12:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0) 
-    #         if tank == '376' and time <= 21:
-    #             model.addConstr(p[tank, line, prod, time] == 0)
-    #             model.addConstr(i[tank, line, prod, time] == 0)
-                        
-    #     return (model)
-
     @staticmethod
     def model_tank_const1(model, inputs):
         
@@ -1646,8 +1430,8 @@ class OptimizationModel:
         #-------------------------------------------------------------------------------------------------------------              
         #
         # 
-        model  = gp.Model('ATJ2')
         
+        model  = gp.Model('ATJ2')
         
         x_index = index['x']
         x       = model.addVars(x_index,  lb = 0.0, ub = 200, vtype = GRB.CONTINUOUS)
@@ -1732,6 +1516,7 @@ class OptimizationModel:
         # 
         # 
         model.setObjective(t[0], GRB.MINIMIZE)
+        model.write("model.mps")
         model.Params.timelimit = 12 * 60
         model.optimize()
         
