@@ -23,28 +23,28 @@ from pulp import LpProblem
 pd.options.mode.chained_assignment = None
 
 from class_OptimizationModel import OptimizationModel
-from class_data import DataCycleLoader
-from class_data import DataOptimizations
+from class_data import DataInputProcessing
+from class_data import DataLocation
+from class_data import DataCycle
+from class_data import DataOptimization
 
-data_cycle_loader = DataCycleLoader();
-data_optimizations = DataOptimizations(data_cycle_loader);
-
-
-# Assuming the rest of your script is the same...
+a = DataInputProcessing();
+optimization = DataOptimization()
 
 if __name__ == "__main__":
     if len(sys.argv) == 3:
+        
         # Capture inputs from command line arguments
         arg1 = sys.argv[1]
         arg2 = sys.argv[2]
 
         # Example usage of the arguments
-        inputs = data_optimizations.getOptimization(arg1, arg2).inputs # For example "ATJ" "031"
-        
+        inputs = optimization.inputs
+
         ID = 1                
         # Read the Tanks_to_use
         df_read = pd.read_csv('input_optimization/tanks.csv')
-        inputs['Tanks_to_use'] = df_read['Tanks'].tolist()
+        inputs['user_tanks'] = df_read['Tanks'].tolist()
         
         # Read the flow_constraints. Example: [{'Tank': 310, 'Inbound': 2, 'Outbound': 2}, {'Tank': 311, 'Inbound': 2, 'Outbound': 2}]
         df_read = pd.read_csv('input_optimization/flowTanks.csv')
@@ -56,7 +56,19 @@ if __name__ == "__main__":
 
         # Set objective
         inputs['objective'] = "selection1"
+
+
+        print("*************** New Optimization Run ***************")
+        print('Constraints:')
+        print("Tanks: ", inputs['user_tanks'])
+        print("--------------------------------------")
+        #print("Flow Constraints - Universal: ", flow_constraints_univ_1, flow_constraints_univ_2)
+        #print("Flow Constraints: ", flow_constraints_data)
+        print("Objective: ", inputs['objective'])
+        print("--------------------------------------")
         
         # Call the optimization model
         ret = OptimizationModel.model_stage3(ID, inputs)
 
+        print("*************** Results ***************")
+        print("Optimization Status ->>> " + ret['Status'])

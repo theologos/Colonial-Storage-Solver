@@ -10,42 +10,527 @@ import os
 import warnings
 import re
 import collections
+from pathlib import Path
+from ast import literal_eval
+import ast  # Import abstract syntax trees to safely evaluate strings as Python expressions
 
+
+class DataInputProcessing():
+
+    def __init__(self):
+        
+        self.truncate()
+        self.staging()
+        
+        self.create_location_tanks()
+        self.create_location_products()
+        self.create_location_lines()
+        #self.create_location_lines_v2()
+        
+        self.create_cycle_lineSchedule()
+        self.create_cycle_tankInventory()
+        
+    def staging(self):
+        # Setup the file path
+        input_path = Path('input_raw') / 'TRM SxcheduleData.csv'
+        output_path = Path('input_staging') / 'TRM SxcheduleData.csv'
+
+        # Read the CSV file
+        df = pd.read_csv(input_path)
+        
+#         def mapping(code):
+#             if code in ['A2', 'A3', 'A4', 'A5', 'M3', 'M4', 'V4']:
+#                 return 'A'
+#             elif code in ['D2', 'D3', 'D4']:
+#                 return 'D'
+#             elif code in ['51', '56']:
+#                 return '54'
+#             elif code in ['96']:
+#                 return '62'
+#             else:
+#                 return code
+            
+            
+        def mapping(code):
+            return code    
+            
+        # Function to replace middle component
+        def replace_component(value):
+            parts = value.split('-')
+            middle_component = parts[1]
+            parts[1] = mapping(middle_component)
+            return '-'.join(parts)
+
+        # Apply the function to the DataFrame
+        df['Batch'] = df['Batch'].apply(replace_component)
+        
+        # Extract and append client, product, and cycle information from the 'Batch' column
+        extracted_data = df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
+        extracted_data.columns = ['Client', 'Product', 'Cycle_']
+        df = pd.concat([df, extracted_data], axis=1)
+
+        # Truncate the 'Cycle_' column to get the first two characters and filter rows
+        df['Cycle'] = df['Cycle_'].str[:2]
+        df = df[df['Cycle'] == '52']  # Filter for rows where 'Cycle' is '52'
+        
+        # Drop unnecessary columns from the DataFrame
+        df.drop(['Client', 'Product', 'Cycle_', 'Cycle'], axis=1, inplace=True)
+        
+        # Save the updated DataFrame to a CSV file, without the index
+        df.to_csv(output_path, index=False)
+         
+        # Setup the file path
+        input_path = Path('input_raw') / 'TFInvSample.csv'
+        output_path = Path('input_staging') / 'TFInvSample.csv'
+
+        # Read the CSV file
+        df = pd.read_csv(input_path)
+        
+        # Apply the function
+        df['Product'] = df['Product'].apply(mapping)
+        
+        df = df.dropna(subset=['Product'])
+        df['Volume'] = df['Volume'].where(df['Volume'] >= 0, 0)
+        
+        # Save the updated DataFrame to a CSV file, without the index
+        df.to_csv(output_path, index=False)
+
+    def truncate(self):
+        # Setup the file path
+        input_path = Path('input_raw') / 'TRM SxcheduleData.csv'
+        output_path = Path('input_raw') / 'lineSchedule.csv'
+
+        # Read the CSV file
+        df = pd.read_csv(input_path)
+
+        # Extract and append client, product, and cycle information from the 'Batch' column
+        extracted_data = df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
+        extracted_data.columns = ['Client', 'Product', 'Cycle_']
+        df = pd.concat([df, extracted_data], axis=1)
+
+        # Truncate the 'Cycle_' column to get the first two characters and filter rows
+        df['Cycle'] = df['Cycle_'].str[:2]
+        df = df[df['Cycle'] == '52']  # Filter for rows where 'Cycle' is '52'
+
+        # Drop unnecessary columns from the DataFrame
+        df.drop(['Client', 'Product', 'Cycle_', 'Cycle'], axis=1, inplace=True)
+
+        # Save the updated DataFrame to a CSV file, without the index
+        df.to_csv(output_path, index=False)
+
+        print("Filtered data saved to:", output_path)
+        
+
+    def create_location_tanks(self):
+        # Setup file paths
+        base_input_path = Path('input_staging')
+        base_output_path = Path('input_location')
+        input_file = base_input_path / 'TFInvSample.csv'
+        output_file = base_output_path / 'dim_tanks.csv'
+
+        # Ensure the output directory exists
+        base_output_path.mkdir(parents=True, exist_ok=True)
+
+        # Function to read and group lines by tank
+        def group_lines(file_path, line_column_name):
+            df_lines = pd.read_csv(file_path, usecols=['Tank', 'Line'])
+            grouped = df_lines.groupby('Tank')['Line'].agg(list).reset_index()
+            return grouped.rename(columns={'Line': line_column_name})
+
+        # Read only the necessary columns from the main tank file
+        df = pd.read_csv(input_file, usecols=['Tank', 'Type', 'Product', 
+                                              'Type', 'Out of Service',
+                                              'Low Level', 'Normal Fill', 'Max Capacity'])
+        
+        # Rename the column
+        df.rename(columns={'Low Level': 'Bottom',
+                          'Normal Fill': 'Working',
+                          'Max Capacity': 'Maximum'}, inplace=True)
+        
+        # Columns to modify
+        columns_to_modify = ['Bottom', 'Working', 'Maximum']
+
+        # Divide by 100 and round to three decimal places
+        df[columns_to_modify] = df[columns_to_modify].div(1000).round(0)
+
+        df[columns_to_modify] = df[columns_to_modify] + 30
+        
+        
+        # Process and merge line out data
+        line_out_path = base_output_path / 'topoO_ATJ.csv'
+        line_out_data = group_lines(line_out_path, 'LineOut')
+        df = df.merge(line_out_data, on='Tank', how='left')
+
+        # Process and merge line in data
+        line_in_path = base_output_path / 'topoI_ATJ.csv'
+        line_in_data = group_lines(line_in_path, 'LineIn')
+        df = df.merge(line_in_data, on='Tank', how='left')
+
+        # Save to CSV without the index
+        df.to_csv(output_file, index=False)
+        print("File saved to:", output_file)
+
+        # Read the CSV
+        #df_tanks = pd.read_csv('tanks_with_lines.csv')
+
+        # Convert the string back to a list
+        #df_tanks['Line'] = df_tanks['Line'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
+
+        # Display the DataFrame
+        #print(df_tanks)
+
+    def create_location_products(self):
+        # Path setup with pathlib
+        base_path = Path('input_staging')
+
+        # Read the first file and get unique products
+        tank_file_path = base_path / 'TFInvSample.csv'
+        tank_df = pd.read_csv(tank_file_path)
+        products_from_tank = pd.DataFrame(tank_df['Product'].unique(), columns=['Product'])
+        products_from_tank['TankFile'] = True
+
+        # Read the second file, extract product details, and handle line-specific logic
+        line_schedule_path = base_path / 'TRM SxcheduleData.csv'
+        line_schedule_df = pd.read_csv(line_schedule_path)
+        line_schedule_df[['Client', 'Product', 'Cycle_']] = line_schedule_df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
+
+        # Create filters based on 'Line'
+        line_in_df = line_schedule_df[line_schedule_df['Line'].isin(['01', '02'])]
+        line_out_df = line_schedule_df[~line_schedule_df['Line'].isin(['01', '02'])]
+
+        # Get unique products for each line category
+        products_line_in = pd.DataFrame(line_in_df['Product'].unique(), columns=['Product'])
+        products_line_in['LineIn'] = True
+
+        products_line_out = pd.DataFrame(line_out_df['Product'].unique(), columns=['Product'])
+        products_line_out['LineOut'] = True
+
+        # Concatenate and group by 'Product' to aggregate boolean columns
+        df_union = pd.concat([products_from_tank, products_line_in, products_line_out])
+        df_union = df_union.groupby('Product', as_index=False).max()
+
+        # Replace NaN with False in boolean columns
+        df_union.fillna(False, inplace=True)
+
+        # Write to CSV in specified directory
+        output_path = Path('input_location') / 'dim_products.csv'
+        df_union.to_csv(output_path, index=False)
+        
+        print(f"File saved to: {output_path}")
+
+
+    def create_location_lines(self):
+        input_path = Path('input_staging') / 'TRM SxcheduleData.csv'
+        output_path = Path('input_location') / 'dim_lines.csv'
+
+        # Read CSV file
+        df = pd.read_csv(input_path)
+
+        # Extract and rename columns directly in the DataFrame
+        df[['Client', 'Product', 'Cycle_']] = df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
+
+        # Group by 'Line' and aggregate unique 'Products'
+        result_df = df.groupby('Line')['Product'].agg(lambda x: sorted(set(x))).reset_index()
+
+        # Ensure the output directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        df_tank = pd.read_csv('input_location/topoO_ATJ.csv', usecols=['Tank', 'Line'])
+        grouped_tanks = df_tank.groupby('Line')['Tank'].agg(list).reset_index()
+        # # Merge back to the original tanks DataFrame
+        result_df = result_df.merge(grouped_tanks, on='Line', how='left')
+        
+        # Save to CSV, excluding the index
+        result_df.to_csv(output_path, index=False)
+
+        # Print the result or confirmation message
+        print(f"File saved to: {output_path}")
+        
+#     def create_location_lines_v2(self):
+
+#         # Read the CSV
+#         df_lines = pd.read_csv('input_location/dim_lines.csv')
+
+#         # Clean the 'Tank' data by removing brackets and splitting correctly
+#         df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
+#         df_lines['Tank'] = df_lines['Tank'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
+
+#         # Explode the 'Tank' column
+#         df_lines_v2 = df_lines.explode('Tank')
+
+#         # Read the CSV
+#         df_tanks = pd.read_csv('input_location/dim_tanks.csv', usecols=['Tank', 'Product'])
+
+#         # Convert join columns to integers
+#         df_lines_v2['Tank'] = pd.to_numeric(df_lines_v2['Tank'], errors='coerce').fillna(-1).astype(int)
+#         df_tanks['Tank'] = pd.to_numeric(df_tanks['Tank'], errors='coerce').fillna(-1).astype(int)
+
+#         left_merged_df = pd.merge(df_lines_v2, df_tanks, on='Tank', how='left')
+#         #print("Left Merge:\n", left_merged_df)
+
+
+#         # Group by 'Line' and aggregate 'Product_y' into a list, excluding NaNs
+#         result_df = left_merged_df.groupby('Line').agg({
+#             'Product_x': 'first',  # Assuming Product_x should just be taken from the first occurrence
+#             'Tank': list,         # Aggregate all Tanks into a list
+#             'Product_y': lambda x: list(x.dropna().unique())  # Remove NaNs and get unique Product_y values
+#         }).reset_index()
+
+
+#         # Apply literal_eval safely
+#         def safe_literal_eval(s):
+#             try:
+#                 return literal_eval(s)
+#             except ValueError:
+#                 return []  # or return s if you want to keep as is when there's an error
+
+#         # Convert lists in 'Product_x' and 'Product_y' to sets and check if 'Product_x' is a subset of 'Product_y'
+#         result_df['Is_Subset'] = result_df.apply(lambda row: set(row['Product_x']).issubset(set(row['Product_y'])), axis=1)
+
+#         result_df.to_csv('input_location/mart_lines.csv', index=False)
+
+        
+    def create_cycle_lineSchedule(self):
+        
+        #--------------------------------------------------------------------------------
+        # Read the file
+        #
+        filename = 'input_staging/TRM SxcheduleData.csv'
+        df = pd.read_csv(filename)
+
+        #--------------------------------------------------------------------------------
+        # Step 1: Create the 'Superbatch' column
+        #
+        # Initialize the SuperBatch column with NaN
+        df['SuperBatch'] = num.nan
+
+        # Placeholder for the current SuperBatch value
+        current_super_batch = None
+
+        # Iterate over the DataFrame rows
+        for index, row in df.iterrows():
+            if row['Event Type'] == 'SUPERSTART':
+                # Update the current SuperBatch value
+                current_super_batch = row['Batch']
+            elif row['Event Type'] == 'SUPERSTOP':
+                # Clear the current SuperBatch value
+                current_super_batch = None
+
+            # Assign the current SuperBatch value to the row
+            df.at[index, 'SuperBatch'] = current_super_batch
+
+        df.to_csv('input_cycle/processing/df_step1.csv')
+
+        #--------------------------------------------------------------------------------
+        # Step 2: Replace the RATECHANGE
+        #
+        # Initialize a list to hold the new rows
+        new_rows = []
+
+        # Iterate through RATECHANGE rows and create new BATCHSTART and BATCHEND rows
+        for index, row in df.iterrows():
+
+            if row['Event Type'] == 'RATECHANGE':
+                # Update the current SuperBatch value
+                new_start_row = row.copy()
+                new_end_row = row.copy()
+                # Set the Event Type for the new rows
+                new_start_row['Event Type'] = 'BATCHSTART'
+                #new_start_row['Batch'] = new_start_row['Batch'] + '-1'
+                new_end_row['Event Type'] = 'BATCHSTOP'
+                #new_end_row['Batch'] = new_end_row['Batch'] + '-1'
+                # Add the new rows to the list
+                new_rows.append(new_end_row)
+                new_rows.append(new_start_row)
+            elif (row['Event Type'] == 'BATCHSTART') | (row['Event Type'] == 'BATCHSTOP'):
+                # Clear the current SuperBatch value
+                new_rows.append(row)
+
+        # Create a DataFrame from the new rows
+        new_rows_df = pd.DataFrame(new_rows)    
+        new_rows_df.rename(columns={'Event Date Time': 'Start Date Time'}, inplace=True)
+        # Shift the 'Event Date Time' column upwards by one
+        new_rows_df['Stop Date Time'] = new_rows_df['Start Date Time'].shift(-1)
+
+        df_start = new_rows_df[new_rows_df['Event Type'] == 'BATCHSTART'].copy()
+
+        df_start['Start'] = pd.to_datetime(df_start['Start Date Time'])
+        df_start['Stop']   = pd.to_datetime(df_start['Stop Date Time'])
+
+        df_start.to_csv('input_cycle/processing/df_step2.csv')
+        
+        #--------------------------------------------------------------------------------
+        # Step 3: Expand
+        #
+        # Define the original data with 'Start' and 'End' columns, possibly with additional rows
+        original_df = df_start
+
+        # Function to expand time range for a given start and end time
+        def expand_time_range(start_time, end_time):
+            start = pd.to_datetime(start_time)
+            end = pd.to_datetime(end_time)
+
+            # Ensure that 'end' is always after 'start'
+            if end < start:
+                return pd.DataFrame({'Timestamp': [], 'Hours': []})
+
+            # Initialize variables
+            timestamps = []
+            hours = []
+
+            # Truncate the start time to the beginning of its hour
+            start_truncated = start.replace(minute=0, second=0, microsecond=0)
+
+            # Handle same-hour case directly
+            if start.hour == end.hour and start.date() == end.date():
+                duration_minutes = (end - start).total_seconds() / 60
+                fraction_of_hour = round(duration_minutes / 60, 2)
+                timestamps.append(start_truncated.strftime('%m/%d/%Y %H:%M'))
+                hours.append(fraction_of_hour)
+            else:
+                # Calculate the fraction for the first partial hour if start minute is not zero
+                if start.minute != 0:
+                    first_hour_fraction = round((60 - start.minute) / 60, 2)
+                    timestamps.append(start_truncated.strftime('%m/%d/%Y %H:%M'))
+                    hours.append(first_hour_fraction)
+                    start_truncated += pd.Timedelta(hours=1)  # Move to the next hour
+
+                # Fill full hours between the adjusted start and the hour before the end
+                end_truncated = end.replace(minute=0, second=0, microsecond=0)
+                while start_truncated < end_truncated:
+                    timestamps.append(start_truncated.strftime('%m/%d/%Y %H:%M'))
+                    hours.append(1.0)
+                    start_truncated += pd.Timedelta(hours=1)
+
+                # Handle last partial hour if there's any minute in end time
+                if end.minute != 0:
+                    last_hour_fraction = round(end.minute / 60, 2)
+                    timestamps.append(end_truncated.strftime('%m/%d/%Y %H:%M'))
+                    hours.append(last_hour_fraction)
+
+            return pd.DataFrame({'Timestamp': timestamps, 'Hours': hours})
+
+        # Initialize an empty DataFrame to store the expanded data
+        expanded_data = pd.DataFrame()
+
+        # Iterate over each row in the original DataFrame to generate the expanded rows
+        for _, row in original_df.iterrows():
+            expanded_rows = expand_time_range(row['Start'], row['Stop'])
+
+            # Copy the additional columns' data for each expanded row
+            for col in original_df.columns.difference(['Start', 'Stop']):
+                expanded_rows[col] = row[col]
+
+            # Append the expanded rows to the expanded_data DataFrame
+            expanded_data = pd.concat([expanded_data, expanded_rows], ignore_index=True)
+
+        # Add Client, Product, Cycle
+        expanded_data['Volume'] = (expanded_data['Hours'] * expanded_data['BPH']).round(0)
+        temp = expanded_data['SuperBatch'].str.extract(r'(\w+)-(\w+)-(\w+)')
+        temp.columns = ['Client', 'Product', 'Cycle_']
+        expanded_data = pd.concat([expanded_data, temp], axis=1)
+        expanded_data['Cycle'] = expanded_data['Cycle_'].str[:2]
+        expanded_data.to_csv('input_cycle/processing/df_step3.csv')
+
+        #--------------------------------------------------------------------------------
+        # Step 4: Group data
+        #
+        grouped_data = expanded_data.groupby(['Cycle', 'Timestamp', 'Line', 'Product']).agg({
+            'Volume': 'sum',
+            'Start Date Time': 'min',
+            'Stop Date Time': 'min'
+        }).reset_index()
+
+        # Sorting the resulting DataFrame by 'Volume' (descending) and 'Timestamp' (ascending)
+        grouped_data = grouped_data.sort_values(by=['Cycle', 'Timestamp', 'Line', 'Start Date Time'], ascending=[True, True, True, True])
+
+        grouped_data.to_csv('input_cycle/processing/df_step4.csv')
+        
+        #--------------------------------------------------------------------------------
+        # Step 5: Fold data
+        #
+        # Function to apply to each group
+        def tag_similar_next_row(group):
+            group['Fold'] = (group['Timestamp'] == group['Timestamp'].shift(-1)).astype(int)
+            return group
+
+        # Apply the function to each group defined by 'Line' and 'Cycle'
+        grouped_data = grouped_data.groupby(['Line', 'Cycle']).apply(tag_similar_next_row).reset_index(drop=True)
+        grouped_data = grouped_data[grouped_data['Fold'] == 0]
+
+        grouped_data.to_csv('input_cycle/processing/df_step5.csv')
+        
+        #--------------------------------------------------------------------------------
+        # 
+        #
+        # Renaming the columns
+        grouped_data.rename(columns={'Timestamp': 'Datetime'}, inplace=True)
+        grouped_data['Datetime'] = pd.to_datetime(grouped_data['Datetime'])
+        grouped_data['Volume'] = grouped_data['Volume'] / 1000
+        grouped_data['Diff'] = 1
+        grouped_data['Hourly_Vol'] = grouped_data['Volume']
+        grouped_data['Datetime_min'] = 1
+        grouped_data['Time'] = 1
+        # Define the new order of columns
+        new_order = ['Datetime', 'Volume', 'Diff', 'Cycle', 'Hourly_Vol', 'Product', 'Line', 'Datetime_min', 'Time']
+
+        grouped_data['Time'] = grouped_data.groupby('Cycle')['Datetime'].rank(method = 'dense', ascending=True) 
+
+        # Find the minimum datetime value
+        grouped_data['Datetime_min'] = grouped_data.groupby('Cycle')['Datetime'].transform('min')
+
+        grouped_data['Time'] = (grouped_data['Datetime'] - grouped_data['Datetime_min']).dt.total_seconds() / 3600 + 1
+
+        # Reorder the columns by indexing with the new order
+        grouped_data = grouped_data[new_order]
+
+
+        # Ensure all 'Cycle' column values are strings with leading zeros if necessary
+        grouped_data['Cycle'] = grouped_data['Cycle'].astype(str).str.zfill(3)
+
+        grouped_data.to_csv('input_cycle/processing/df_step6.csv')
+        
+        directory = 'input_cycle/v2'
+        grouped_data.to_csv(directory + '/LineSchedule.csv', index=False)
+        grouped_data.to_csv(directory + '/fact_LineSchedule.csv', index=False)
+            
+    def create_cycle_tankInventory(self):
+        
+        filename = 'input_staging/TFInvSample.csv'
+        df = pd.read_csv(filename)
+        
+        df['Cycle'] = '052'
+        df = df[['Cycle', 'Tank', 'Product', 'Volume']]
+        df['Volume'] = df['Volume'].where(df['Volume'] >= 0, 0)
+        df['Volume'] = (df['Volume'] / 1000).round(0) + 20
+
+        directory = 'input_cycle/v2'
+        df.to_csv(directory + '/TankInventory.csv', index=False)
+        df.to_csv(directory + '/fact_tanks.csv', index=False)
+             
 class DataLocation:
-    def __init__(self, name):
-        self.Name = name
-        self.Capacity = {}
-        self.Tanks = []
-        self.Tanks_073 = []
-        self.Tanks_085 = []
-        self.Bounds = {}
+    
+    def __init__(self):
+        
+        self.dim_tanks    = self.load_csv('input_location/dim_tanks.csv')
+        self.dim_lines    = self.load_csv('input_location/dim_lines.csv')
+        self.dim_products = self.load_csv('input_location/dim_products.csv')
+        
         self.topo_i = {}
         self.topo_o = {}
-
-        self.Tanks, self.Tanks_073, self.Tanks_085, self.Capacity = self.load_tanks('input_location/capacities_ATJ.csv')
-        self.Bounds = self.load_bounds('input_location/bounds_ATJ.csv')
-        self.topo_i = self.load_topology('input_location/topoI_ATJ.csv')
-        self.topo_o = self.load_topology('input_location/topoO_ATJ.csv')
-
-        self.validate_topologies(self.topo_i, self.topo_o)
-        self.validate_tanks(self.topo_i, self.Tanks)
-        self.validate_lines(self.topo_i, self.topo_o, self.Bounds)
-
-    def load_bounds(self, filepath):
+        self.topo_i, self.topo_o = self.load_topology('input_location/dim_tanks.csv')
+        
+        self.validate_topologies()
+        self.validate_tanks()
+    
+    def load_csv(self, filepath):
         try:
-            # Read the CSV file into a DataFrame
-            df_read = pd.read_csv(filepath, encoding="ISO-8859-1", dtype={'Line': str, 'Lower': float, 'Upper': float})
-            
-            # Remove quotes from 'Line' if they exist and ensure it's a string
-            df_read['Line'] = df_read['Line'].str.strip('"')
-            
-            # Convert the DataFrame to a dictionary with 'Line' as keys and {'l': Lower, 'u': Upper} as values
-            bounds = df_read.set_index('Line').apply(lambda row: {'l': row['Lower'], 'u': row['Upper']}, axis=1).to_dict()
-
-            return bounds
-
+            # Read the CSV file
+            df_read = pd.read_csv(filepath, encoding="ISO-8859-1")
+            return df_read
+        
         except Exception as e:
-            print(f"An error occurred in load_bounds: {e}")
+            print(f"An error occurred in load_csv: {e}")
             return {}
     
     def load_topology(self, filepath):
@@ -67,153 +552,74 @@ class DataLocation:
         '''
         try:
             # Read the CSV file into a DataFrame
-            df_read = pd.read_csv(filepath, dtype={'Tank': int, 'Line': str, 'Product': str})
-            topology = {}
 
-            # Iterate through the DataFrame and build the topology dictionary
-            for _, row in df_read.iterrows():
+
+            # Read the CSV file
+            df = pd.read_csv(filepath)
+
+            # Convert 'Lineout' from string to list
+            df['Lineout'] = df['LineOut'].apply(lambda x: ast.literal_eval(x) if pd.notna(x) else [])
+            df['Linein'] = df['LineIn'].apply(lambda x: ast.literal_eval(x) if pd.notna(x) else [])
+
+            # Initialize an empty dictionary
+            tank_dict = {}
+
+            # Iterate through each row to populate the dictionary
+            b = {}
+            for index, row in df.iterrows():
                 tank = row['Tank']
-                line = row['Line']
                 product = row['Product']
+                lines = row['Lineout']  # Assuming this is already a list, convert if it's a string
 
-                # Initialize the tank dict if not already present
-                if tank not in topology:
-                    topology[tank] = {}
+                a = {}
+                if pd.notna(product):  # Check if product is not NaN before entering the loop
+                    for line in lines:
+                        line = str(line).zfill(2)
+                        a[line] = {product: 0}
+                b[tank] = a  
+                
+            c = {}
+            for index, row in df.iterrows():
+                tank = row['Tank']
+                product = row['Product']
+                lines = row['Linein']  # Assuming this is already a list, convert if it's a string
 
-                # Add the line and product with an initial value of 0
-                topology[tank][line] = {product: 0}
-
-            return topology
+                a = {}
+                if pd.notna(product):  # Check if product is not NaN before entering the loop
+                    for line in lines:
+                        line = str(line).zfill(2)
+                        a[line] = {product: 0}
+                c[tank] = a 
+                
+            return c, b
         
         except Exception as e:
             print(f"An error occurred in load_topology: {e}")
             return {}
-    
-    def load_tanks(self, filepath):
-        try:
-            # Read the CSV file
-            df_read = pd.read_csv(filepath, encoding="ISO-8859-1")
-            
-            # Round the 'Working' column and convert to integer
-            df_read['Working'] = (1000 * df_read['Working']).round().astype(int) // 1000
-            
-            # Create the 'Capacity' dictionary
-            capacities = pd.Series(df_read['Working'].values + 10, index=df_read['Tank']).to_dict()
-            
-            # Create the 'Tanks' list
-            tanks = df_read['Tank'].tolist()
-            
-            # Create the 'Tanks_073' and 'Tanks_085' lists
-            tanks_073 = df_read[df_read['Classification'] == "Gas"]['Tank'].tolist()
-            tanks_085 = df_read[df_read['Classification'] == "Oil"]['Tank'].tolist()
-            
-            return tanks, tanks_073, tanks_085, capacities
 
-        except Exception as e:
-            print(f"An error occurred in load_tanks: {e}")
-            return [], [], [], {}
-
-    def validate_topologies(self, topo_i, topo_o):
-        if not list(topo_i.keys()) == list(topo_o.keys()):
+    def validate_topologies(self):
+        if not list(self.topo_i.keys()) == list(self.topo_o.keys()):
             raise ValueError("Error: Input and Output topology keys are not the same.")
 
-    def validate_tanks(self, topo_i, Tanks):
-        if not list(topo_i.keys()) == sorted(Tanks):
+    def validate_tanks(self):
+        tanks = self.dim_tanks['Tank'].tolist()
+        if not list(self.topo_i.keys()) == sorted(tanks):
             raise ValueError("Error: Topology and Tank keys do not match.")
-            
-    def validate_lines(self, topo_i, topo_o, Bounds):
-        keys_o = set()
-        for k, v in topo_o.items():
-            keys_o.update(v.keys())
 
-        keys_i = set()
-        for k, v in topo_i.items():
-            keys_i.update(v.keys())
-            
-        keys = list(keys_i) + list(keys_o)   
-        if not sorted(keys) == sorted(list(Bounds.keys())):
-            raise ValueError("Error: The topology and bound keys do not match.")
-        
-
-    def print_details(self):
-            print("\n------- Tanks -------")
-            print(self.Tanks)
-            print("\n------- Tanks 073 -------")
-            print(self.Tanks_073)
-            print("\n------- Tanks 085 -------")
-            print(self.Tanks_085)
-            print("\n------- Capacities -------")
-            print(self.Capacity)
-            print("\n------- Bounds -------")
-            print(self.Bounds)
+    def print(self):
             print("\n------- Topology I -------")
             print(self.topo_i)
-
-
-class DataCycleLoader():
-
-    def __init__(self):
-
-        self.VolIn = self.load_volume('input_cycle/VolIn_v2.csv')
-        self.VolOut = self.load_volume('input_cycle/VolOut_v2.csv')
-        self.VolExist = self.load_volume_tank('input_cycle/VolExist_v2.csv')
-        self.VolLineFlows = pd.read_csv('input_cycle/VolLineFlows.csv')   
-
-    def load_volume(self, filepath):
-
-        df_read = pd.read_csv(filepath, dtype={'Cycle': str, 'Line': str, 'Product': str, 'Volume': float})
-
-        # Create an empty dictionary to store the cycle data.
-        cycle_data = {}
-
-        # Iterate over the DataFrame rows.
-        for index, row in df_read.iterrows():
-            cycle, line, product, volume = row['Cycle'], row['Line'], row['Product'], row['Volume']
+            print("\n------- dim Tanks -------")
+            print(self.dim_tanks)
+            print("\n------- dim Lines -------")
+            print(self.dim_lines)
+            print("\n------- dim Products -------")
+            print(self.dim_products)
             
-            # Ensure the keys are strings to match the target dictionary structure.
-            cycle, line = str(cycle), str(line)
-
-            # Initialize nested dictionaries if not already present.
-            if cycle not in cycle_data:
-                cycle_data[cycle] = {}
-            if line not in cycle_data[cycle]:
-                cycle_data[cycle][line] = {}
-
-            # Assign the volume to the product under the current cycle and line.
-            cycle_data[cycle][line][product] = volume
-
-        return cycle_data  
-
-
-    def load_volume_tank(self, filepath):
-
-        df_read = pd.read_csv(filepath, dtype={'Cycle': str, 'Tank': int, 'Product': str, 'Volume': float})
-
-        # Create an empty dictionary to store the cycle data.
-        cycle_data = {}
-
-        # Iterate over the DataFrame rows.
-        for index, row in df_read.iterrows():
-            cycle, tank, product, volume = row['Cycle'], row['Tank'], row['Product'], row['Volume']
-            
-            # Ensure the keys are strings to match the target dictionary structure.
-            cycle, tank = str(cycle), int(tank)
-
-            # Initialize nested dictionaries if not already present.
-            if cycle not in cycle_data:
-                cycle_data[cycle] = {}
-            if tank not in cycle_data[cycle]:
-                cycle_data[cycle][tank] = {}
-
-            # Assign the volume to the product under the current cycle and line.
-            cycle_data[cycle][tank][product] = volume
-
-        return cycle_data      
-                            
-
 
 class DataCycle(DataLocation):
-    def __init__(self, data_cycle_loader, name, cycle):
+    
+    def __init__(self):
         """
         Initializes the DataCycle class by setting cycle-related volumes and validating them.
         
@@ -221,35 +627,24 @@ class DataCycle(DataLocation):
         :name: The name of the data location.
         :cycle: The specific cycle to manage and validate.
         """
-        super().__init__(name)  # Call the parent class constructor
+        super().__init__()  # Call the parent class constructor
         
-        # Ensure all necessary keys and structures are present in VolExist
-        self._populate_vol_exist(data_cycle_loader)
-        
-        # Set cycle-related attributes from data_cycle_loader
-        self.Cycle = cycle
-        self.CycleVolIn2 = data_cycle_loader.VolIn[cycle]
-        self.CycleVolOut2 = data_cycle_loader.VolOut[cycle]
-        self.CycleVolExist = data_cycle_loader.VolExist[cycle]
-        self.CycleVolLineFlows = data_cycle_loader.VolLineFlows[
-            data_cycle_loader.VolLineFlows['Cycle'] == int(cycle)]
-        self.CycleStart = self.CycleVolLineFlows['Datetime'].min()
+        self.fact_LineSchedule = self.load_csv('input_cycle/v2/fact_LineSchedule.csv')
+        self.fact_tanks         = self.load_csv('input_cycle/v2/fact_tanks.csv')
+    
+        self.CycleStart = self.fact_LineSchedule['Datetime'].min()
+        self.T          = int(max(self.fact_LineSchedule['Time']) - min(self.fact_LineSchedule['Time']) + 1)
+        self.Time       = list(range(self.T))
 
         # Perform data validations
-        self.validation_volume()
-        self.validation_tanks()
-        self.validation_lineFlows()
-
-    def _populate_vol_exist(self, data_cycle_loader):
-        """
-        Ensures all necessary keys and structures are present in the VolExist dictionary.
-        """
-        for cycle_key in data_cycle_loader.VolExist:
-            for topology_id in self.topo_i:
-                for level in self.topo_i[topology_id]:
-                    for product in self.topo_i[topology_id][level]:
-                        if topology_id not in data_cycle_loader.VolExist[cycle_key]:
-                            data_cycle_loader.VolExist[cycle_key][topology_id] = {product: 0}
+        #self.validation_volume()
+        #self.validation_tanks()
+        #self.validation_lineFlows()
+        
+    def load_csv(self, filepath):
+        # Read the CSV file
+        df_read = pd.read_csv(filepath, encoding="ISO-8859-1")
+        return df_read    
 
     def validation_volume(self):
         """
@@ -304,27 +699,6 @@ class DataCycle(DataLocation):
         
         if (df['Net'] < 0).any():
             raise ValueError("Net volume contains negative values!")
-
-    def validation_tanks(self):
-        """
-        Validates tank volume data. Currently, this method prepares data for validation.
-        Example:
-        original_dict = 
-        {310: {'A': 86.0}, 311: {'A': 5.0}, 312: {'D': 40.0}, 316: {'D': 4.0}, 317: {'A': 31.0}, 330: {'A': 5.0}, 331: {'A': 4.0}, 
-         332: {'A': 5.0}, 333: {'A': 6.0}, 334: {'A': 7.0}, 336: {'A': 4.0}, 337: {'D': 46.0}, 338: {'A': 6.0}, 350: {'54': 4.0}, 
-         351: {'54': 5.0}, 352: {'54': 6.0}, 353: {'54': 7.0}, 354: {'54': 14.0}, 360: {'62': 7.0}, 361: {'62': 10.0}, 
-         371: {'62': 10.0}, 373: {'62': 10.0}, 374: {'62': 68.0}, 313: {'A': 0.0}, 314: {'A': 0.0}, 339: {'A': 0.0}, 363: {'62': 0.0}, 
-         370: {'54': 0.0}, 375: {'62': 0.0}, 376: {'62': 0.0}
-         }
-
-        transformed_dict = 
-        {310: ['A'], 311: ['A'], 312: ['D'], 313: ['A'], 314: ['A'], 316: ['D'], 317: ['A'], 330: ['A'], 331: ['A'], 332: ['A'], 
-        333: ['A'], 334: ['A'], 336: ['A'], 337: ['D'], 338: ['A'], 339: ['A'], 350: ['54'], 351: ['54'], 352: ['54'], 353: ['54'], 
-        354: ['54'], 360: ['62'], 361: ['62'], 363: ['62'], 370: ['54'], 371: ['62'], 373: ['62'], 374: ['62'], 375: ['62'], 376: ['62']
-        }
-        """
-        original_dict = self.CycleVolExist
-        self.transformed_dict = {key: list(value.keys()) for key, value in sorted(original_dict.items())}
 
     def validation_lineFlows(self):
         """
@@ -403,9 +777,13 @@ class DataCycle(DataLocation):
 
         # Check for negative net volumes and raise an error if found
         if (final_df['Net'] < 0).any():
+            print(final_df)
             raise ValueError("Net volume contains negative values!")
+            
         
-    def print_details(self):
+    def print(self):
+            print("\n------- T -------")
+            print(self.T)
             print("\n------- volumes_exist -------")
             print(self.volumes_exist)
             print("\n------- volumes_in -------")
@@ -415,33 +793,25 @@ class DataCycle(DataLocation):
             print("\n------- volumes_net -------")
             print(self.volumes_net)
             print("\n------- volumes_net_flows -------")
-            print(self.volumes_net_flows)
- 
-
+            
 class DataOptimization(DataCycle):
-    def __init__(self, data_cycle_loader, name, cycle):
+    def __init__(self):
         
         # Call the constructor of the parent class
-        super().__init__(data_cycle_loader, name, cycle)
+        super().__init__()
         
-        self.T     = max(self.CycleVolLineFlows['Time']) - min(self.CycleVolLineFlows['Time']) + 1
-        self.Time  = list(range(self.T))
         self.index = self.function_index(self.Time, self.topo_i, self.topo_o)
                             
         inputs_ = {}
-        inputs_['index']             = self.index
-        inputs_["Cycle"]             = self.Cycle
-        inputs_['CycleVolIn2']       = self.CycleVolIn2
-        inputs_['CycleVolOut2']      = self.CycleVolOut2
-        inputs_['CycleVolExist']     = self.CycleVolExist
-        inputs_['CycleVolLineFlows'] = self.CycleVolLineFlows
-        inputs_['CycleStart']        = self.CycleStart
-        inputs_['Bounds']            = self.Bounds
-        inputs_['Capacity']          = self.Capacity
-        inputs_['Tanks']             = self.Tanks
-        inputs_['Tanks_to_use']      = self.Tanks
-        inputs_['T']                 = self.T
-        inputs_['Time']              = self.Time
+        inputs_['index']              = self.index
+        inputs_['dim_tanks']          = self.dim_tanks
+        inputs_['dim_products']       = self.dim_products
+        inputs_['dim_lines']          = self.dim_lines
+        inputs_['fact_LineSchedule']  = self.fact_LineSchedule
+        inputs_['fact_tanks']         = self.fact_tanks
+        inputs_['CycleStart']         = self.CycleStart
+        inputs_['T']                  = self.T
+        inputs_['Time']               = self.Time
         
         self.inputs = inputs_
         
@@ -546,20 +916,3 @@ class DataOptimization(DataCycle):
         ret['tank'] = tank_index
 
         return (ret)    
-        
-class DataOptimizations():
-    
-    def __init__(self, data_cycle_loader):
-        
-        optimizations_ = {}
-        optimizations_['031'] = DataOptimization(data_cycle_loader, "ATJ", "031")
-        optimizations_['041'] = DataOptimization(data_cycle_loader, "ATJ", "041")
-        optimizations_['051'] = DataOptimization(data_cycle_loader, "ATJ", "051")
-        optimizations_['061'] = DataOptimization(data_cycle_loader, "ATJ", "061")
-        optimizations_['071'] = DataOptimization(data_cycle_loader, "ATJ", "071") 
-        optimizations_['081'] = DataOptimization(data_cycle_loader, "ATJ", "081")
-        
-        self.optimizations = {'ATJ': optimizations_}
-        
-    def getOptimization(self, name, cycle):
-        return self.optimizations[name][cycle]

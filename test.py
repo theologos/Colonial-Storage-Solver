@@ -27,7 +27,6 @@ for outer_key, middle_dict in combined_dict.items():
             topo_x[outer_key] = inner_key
             break  # Since we only need the first key, we can break after finding it
 
-#print(topo_x)
 
 a = [(tank, topo_x[tank], time) for tank in topo_x for time in [1,2,3]]
 print(a)

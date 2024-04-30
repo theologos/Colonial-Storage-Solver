@@ -1,0 +1,14 @@
+Product,TankFile,LineIn,LineOut
+51,True,False,False
+54,True,True,True
+56,False,True,True
+62,True,True,True
+96,True,False,True
+A2,True,False,False
+A3,True,True,True
+A5,True,False,False
+D3,True,True,True
+D4,True,False,False
+M3,False,True,True
+M4,True,False,False
+V4,True,False,False
