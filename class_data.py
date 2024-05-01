@@ -471,7 +471,7 @@ class DataInputProcessing():
         '''
          In this function we build fact_tanks, i.e., a fact table for Lines. 
          The facts will be the 'Volume' that the Tank holds at the beginning of the Cycle.
-         The table is built directly from the tankInventory file.
+         The table is built directly from the tankInventory file similarly to the dim_tanks table.
         '''
         
         # Set up file paths
@@ -544,12 +544,9 @@ class DataLocation:
         self.dim_lines    = self.load_csv('input_location/dim_lines.csv')
         self.dim_products = self.load_csv('input_location/dim_products.csv')
         
-        self.topo_i = {}
-        self.topo_o = {}
+        # Directly assign the dictionaries returned from the function
         self.topo_i, self.topo_o = self.load_topology('input_location/dim_tanks.csv')
-        
-        self.validate_topologies()
-        self.validate_tanks()
+        self.validation_master()
     
     def load_csv(self, filepath):
         try:
@@ -623,17 +620,73 @@ class DataLocation:
         
         except Exception as e:
             print(f"An error occurred in load_topology: {e}")
-            return {}
+            return {}        
+            
+    def validation_master(self):
+        
+        self.validation_level1_dim_tanks()
+        self.validation_level1_dim_lines()
+        self.validation_level1_dim_products()
+        self.validation_level2()
+        
+    def validation_level1_dim_tanks(self):
+        """
+        Validates that the 'Tank' column in the 'dim_tanks' DataFrame is suitable for use as a primary key.
+        The column must contain unique non-null values only.
+        Raises:
+            ValueError: If non-null values in the 'Tank' column are not unique.
+                        If certain columns have null values
+        """
+        col = 'Tank'
+        if not self.dim_tanks[col].is_unique or self.dim_tanks[col].isnull().any():
+            raise ValueError("Error (validation_level1_dim_tanks): The primary key is not unique or contains NULL values.")
+            
+        columns_to_check = ['Type', 'Product', 'Working', 'LineOut', 'LineIn']
+        nan_counts = self.dim_tanks[columns_to_check].isna().sum()
+        if nan_counts.any():
+            raise ValueError("Error (validation_level1_dim_tanks): NULL values detected")        
 
-    def validate_topologies(self):
+      
+    def validation_level1_dim_products(self):
+        """
+        Validates that the 'Product' column in the 'dim_products' DataFrame is suitable for use as a primary key.
+        The column must contain unique non-null values only.
+        Raises:
+            ValueError: If non-null values in the 'Product' column are not unique.
+        """
+        col = 'Product'
+        is_ok = self.dim_products[col].is_unique or self.dim_products[col].isnull().any()
+        if not is_ok:
+            raise ValueError("Error (validation_level1_dim_products): The primary key is not unique or contains NULL values.")
+          
+    def validation_level1_dim_lines(self):
+        """
+        Validates that the 'Line' column in the 'dim_lines' DataFrame is suitable for use as a primary key.
+        The column must contain unique non-null values only.
+        Raises:
+            ValueError: If non-null values in the 'Lines' column are not unique.
+                        If certain columns have null values
+        """
+  
+        col = 'Line'
+        is_ok = self.dim_lines[col].is_unique or self.dim_lines[col].isnull().any()
+        if not is_ok:
+            raise ValueError("Error (validation_level1_dim_lines): The primary key is not unique or contains NULL values.")
+            
+        columns_to_check = ['Product']
+        nan_counts = self.dim_lines[columns_to_check].isna().sum()
+        if nan_counts.any():
+            raise ValueError("Error (validation_level1_dim_lines): NULL values detected")
+            
+    def validation_level2(self):
+        
         if not list(self.topo_i.keys()) == list(self.topo_o.keys()):
             raise ValueError("Error: Input and Output topology keys are not the same.")
-
-    def validate_tanks(self):
+            
         tanks = self.dim_tanks['Tank'].tolist()
         if not list(self.topo_i.keys()) == sorted(tanks):
-            raise ValueError("Error: Topology and Tank keys do not match.")
-
+            raise ValueError("Error: Topology and Tank keys do not match.")   
+        
     def print(self):
             print("\n------- Topology I -------")
             print(self.topo_i)
