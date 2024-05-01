@@ -256,6 +256,15 @@ class DataInputProcessing():
         # Merge back to the original tanks DataFrame
         result_df = result_df.merge(grouped_tanks, on='Line', how='left')
         
+        # Create a "Type" column
+        def getType(line):
+            if line in ['01', '02']:
+                return 'In'
+            
+            else:
+                return 'Out'
+        result_df['Type'] = result_df['Line'].apply(getType)
+        
         # Save to CSV, excluding the index
         result_df.to_csv(output_path, index=False)
 
@@ -489,53 +498,7 @@ class DataInputProcessing():
 
         # Output file
         df.to_csv(output_path, index=False)
-    
-    
-    
-#     def create_location_lines_v2(self):
-
-#         # Read the CSV
-#         df_lines = pd.read_csv('input_location/dim_lines.csv')
-
-#         # Clean the 'Tank' data by removing brackets and splitting correctly
-#         df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
-#         df_lines['Tank'] = df_lines['Tank'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
-
-#         # Explode the 'Tank' column
-#         df_lines_v2 = df_lines.explode('Tank')
-
-#         # Read the CSV
-#         df_tanks = pd.read_csv('input_location/dim_tanks.csv', usecols=['Tank', 'Product'])
-
-#         # Convert join columns to integers
-#         df_lines_v2['Tank'] = pd.to_numeric(df_lines_v2['Tank'], errors='coerce').fillna(-1).astype(int)
-#         df_tanks['Tank'] = pd.to_numeric(df_tanks['Tank'], errors='coerce').fillna(-1).astype(int)
-
-#         left_merged_df = pd.merge(df_lines_v2, df_tanks, on='Tank', how='left')
-#         #print("Left Merge:\n", left_merged_df)
-
-
-#         # Group by 'Line' and aggregate 'Product_y' into a list, excluding NaNs
-#         result_df = left_merged_df.groupby('Line').agg({
-#             'Product_x': 'first',  # Assuming Product_x should just be taken from the first occurrence
-#             'Tank': list,         # Aggregate all Tanks into a list
-#             'Product_y': lambda x: list(x.dropna().unique())  # Remove NaNs and get unique Product_y values
-#         }).reset_index()
-
-
-#         # Apply literal_eval safely
-#         def safe_literal_eval(s):
-#             try:
-#                 return literal_eval(s)
-#             except ValueError:
-#                 return []  # or return s if you want to keep as is when there's an error
-
-#         # Convert lists in 'Product_x' and 'Product_y' to sets and check if 'Product_x' is a subset of 'Product_y'
-#         result_df['Is_Subset'] = result_df.apply(lambda row: set(row['Product_x']).issubset(set(row['Product_y'])), axis=1)
-
-#         result_df.to_csv('input_location/mart_lines.csv', index=False)    
-    
-    
+        
 class DataLocation:
     
     def __init__(self):
@@ -545,7 +508,7 @@ class DataLocation:
         self.dim_products = self.load_csv('input_location/dim_products.csv')
         
         # Directly assign the dictionaries returned from the function
-        self.topo_i, self.topo_o = self.load_topology('input_location/dim_tanks.csv')
+        self.topo_i, self.topo_o = self.load_topology()
         self.validation_master()
     
     def load_csv(self, filepath):
@@ -558,7 +521,7 @@ class DataLocation:
             print(f"An error occurred in load_csv: {e}")
             return {}
     
-    def load_topology(self, filepath):
+    def load_topology(self):
         '''
         Example: 
          topo_i:
@@ -576,11 +539,8 @@ class DataLocation:
         
         '''
         try:
-            # Read the CSV file into a DataFrame
-
-
             # Read the CSV file
-            df = pd.read_csv(filepath)
+            df = self.dim_tanks
 
             # Convert 'Lineout' from string to list
             df['Lineout'] = df['LineOut'].apply(lambda x: ast.literal_eval(x) if pd.notna(x) else [])
@@ -627,7 +587,8 @@ class DataLocation:
         self.validation_level1_dim_tanks()
         self.validation_level1_dim_lines()
         self.validation_level1_dim_products()
-        self.validation_level2()
+        self.validation_level2_1()
+        self.validation_level2_2()
         
     def validation_level1_dim_tanks(self):
         """
@@ -678,7 +639,7 @@ class DataLocation:
         if nan_counts.any():
             raise ValueError("Error (validation_level1_dim_lines): NULL values detected")
             
-    def validation_level2(self):
+    def validation_level2_1(self):
         
         if not list(self.topo_i.keys()) == list(self.topo_o.keys()):
             raise ValueError("Error: Input and Output topology keys are not the same.")
@@ -687,6 +648,51 @@ class DataLocation:
         if not list(self.topo_i.keys()) == sorted(tanks):
             raise ValueError("Error: Topology and Tank keys do not match.")   
         
+    def validation_level2_2(self):
+
+        # Read the CSV
+        df_lines = self.dim_lines
+
+        # Clean the 'Tank' data by removing brackets and splitting correctly
+        df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
+        df_lines['Tank'] = df_lines['Tank'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
+
+        # Explode the 'Tank' column
+        df_lines_v2 = df_lines.explode('Tank')
+
+        # Read the CSV
+        df_tanks = self.dim_tanks
+
+        # Convert join columns to integers
+        df_lines_v2['Tank'] = pd.to_numeric(df_lines_v2['Tank'], errors='coerce').fillna(-1).astype(int)
+        df_tanks['Tank'] = pd.to_numeric(df_tanks['Tank'], errors='coerce').fillna(-1).astype(int)
+        left_merged_df = pd.merge(df_lines_v2, df_tanks, on='Tank', how='left')
+
+        # Group by 'Line' and aggregate 'Product_y' into a list, excluding NaNs
+        result_df = left_merged_df.groupby('Line').agg({
+            'Product_x': 'first',  # Assuming Product_x should just be taken from the first occurrence
+            'Product_y': lambda x: list(x.dropna().unique())  # Remove NaNs and get unique Product_y values
+        }).reset_index()
+        
+        def convert_to_list(s):
+            try:
+                return ast.literal_eval(s)
+            except ValueError:
+                return []
+
+        # Apply the function to convert columns
+        result_df['Product_x'] = result_df['Product_x'].apply(convert_to_list)
+        result_df['Product_y'] = result_df['Product_y'].apply(lambda x: x if isinstance(x, list) else convert_to_list(x))
+        
+        def is_subset(row):
+            set_x = set(row['Product_x'])
+            set_y = set(row['Product_y'])
+            return set_x.issubset(set_y)
+
+        # Apply this function to each row
+        result_df['is_subset'] = result_df.apply(is_subset, axis=1)        
+        print("result_df:\n", result_df)
+
     def print(self):
             print("\n------- Topology I -------")
             print(self.topo_i)
