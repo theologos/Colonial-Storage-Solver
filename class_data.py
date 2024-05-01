@@ -22,7 +22,7 @@ class DataInputProcessing():
         self.dir_raw               = Path('input_raw')
         self.dir_stage             = Path('input_staging')
         self.dir_location          = Path('input_location')
-        self.dir_cycle             = Path('input_cycle')  
+        self.dir_cycle             = Path('input_cycle/v2')  
         self.filename_lineSchedule  = 'TRM SxcheduleData.csv'
         self.filename_tankInventory = 'TFInvSample.csv'
         
@@ -33,7 +33,7 @@ class DataInputProcessing():
         self.create_dimension_lines()
         
         self.create_fact_lineSchedule()
-        self.create_fact_tankInventory()
+        self.create_fact_tank()
  
     def staging(self):
         
@@ -262,16 +262,14 @@ class DataInputProcessing():
         # Print the result or confirmation message
         print(f"File saved to: {output_path}")
         
-
-
-        
     def create_fact_lineSchedule(self):
         
-        #--------------------------------------------------------------------------------
-        # Read the file
-        #
-        filename = 'input_staging/' + self.filename_lineSchedule
-        df = pd.read_csv(filename)
+        # Set up file paths
+        input_path = Path('input_staging') / self.filename_lineSchedule
+        output_path = Path('input_cycle') / 'fact_lineSchedule.csv'
+        
+        # Read the files
+        df = pd.read_csv(input_path)
 
         #--------------------------------------------------------------------------------
         # Step 1: Create the 'Superbatch' column
@@ -465,21 +463,32 @@ class DataInputProcessing():
 
         grouped_data.to_csv('input_cycle/processing/df_step6.csv')
         
-        directory = 'input_cycle/v2'
-        grouped_data.to_csv(directory + '/fact_LineSchedule.csv', index=False)
+        # Save to file
+        grouped_data.to_csv(output_path, index=False)
             
-    def create_fact_tankInventory(self):
+    def create_fact_tank(self):
         
-        filename = 'input_staging/' + self.filename_tankInventory
-        df = pd.read_csv(filename)
+        '''
+         In this function we build fact_tanks, i.e., a fact table for Lines. 
+         The facts will be the 'Volume' that the Tank holds at the beginning of the Cycle.
+         The table is built directly from the tankInventory file.
+        '''
         
+        # Set up file paths
+        input_path = Path('input_staging') / self.filename_tankInventory
+        output_path = Path('input_cycle') / 'fact_tanks.csv'
+        
+        # Read input file
+        df = pd.read_csv(input_path)
+        
+        # Get the 'Volume' and divide it by 1000
         df['Cycle'] = '052'
         df = df[['Cycle', 'Tank', 'Product', 'Volume']]
         df['Volume'] = df['Volume'].where(df['Volume'] >= 0, 0)
         df['Volume'] = (df['Volume'] / 1000).round(0) + 20
 
-        directory = 'input_cycle/v2'
-        df.to_csv(directory + '/fact_tanks.csv', index=False)
+        # Output file
+        df.to_csv(output_path, index=False)
     
     
     
