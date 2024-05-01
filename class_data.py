@@ -19,130 +19,130 @@ class DataInputProcessing():
 
     def __init__(self):
         
-        self.truncate()
+        self.dir_raw               = Path('input_raw')
+        self.dir_stage             = Path('input_staging')
+        self.dir_location          = Path('input_location')
+        self.dir_cycle             = Path('input_cycle')  
+        self.filename_lineSchedule  = 'TRM SxcheduleData.csv'
+        self.filename_tankInventory = 'TFInvSample.csv'
+        
         self.staging()
         
-        self.create_location_tanks()
-        self.create_location_products()
-        self.create_location_lines()
-        #self.create_location_lines_v2()
+        self.create_dimension_tanks()
+        self.create_dimension_products()
+        self.create_dimension_lines()
         
-        self.create_cycle_lineSchedule()
-        self.create_cycle_tankInventory()
-        
+        self.create_fact_lineSchedule()
+        self.create_fact_tankInventory()
+ 
     def staging(self):
-        # Setup the file path
-        input_path = Path('input_raw') / 'TRM SxcheduleData.csv'
-        output_path = Path('input_staging') / 'TRM SxcheduleData.csv'
+        
+        """
+        This function does some basic file staging before the main processing.
+        Two main files are handled: 'lineSchedule' and 'tankInventory'. These files may come with different names and they are placed in the input_raw directory. The files are altered as follows:
 
+
+        - 'lineSchedule':  (i) Adjusts batch codes by mapping the product to a simplified version, 
+                           and (ii) keep only one cycle.
+        - 'tankInventory': (i) Maps the product codes (similar to above), and (ii) corrects negative volumes.
+
+        Note:
+            Files paths are derived from instance attributes and depend on the correct setting
+            of `filename_lineSchedule` and `filename_tankInventory`.
+            The resulting files are placed into input_staging directory.
+        """
+             
+        self.stage_lineSchedule()
+        self.stage_tankInventory()
+        
+    
+    def stage_lineSchedule(self):
+        
+        # Setup the file paths
+        input_path  = self.dir_raw / self.filename_lineSchedule
+        output_path = self.dir_stage / self.filename_lineSchedule
+        
         # Read the CSV file
         df = pd.read_csv(input_path)
-        
-#         def mapping(code):
-#             if code in ['A2', 'A3', 'A4', 'A5', 'M3', 'M4', 'V4']:
-#                 return 'A'
-#             elif code in ['D2', 'D3', 'D4']:
-#                 return 'D'
-#             elif code in ['51', '56']:
-#                 return '54'
-#             elif code in ['96']:
-#                 return '62'
-#             else:
-#                 return code
             
-            
-        def mapping(code):
-            return code    
-            
-        # Function to replace middle component
-        def replace_component(value):
+        # Change 1: Replace the product in the Batch column using the mapping
+        def replace_component(value): # Function to replace middle component
             parts = value.split('-')
             middle_component = parts[1]
-            parts[1] = mapping(middle_component)
+            parts[1] = self.mapping(middle_component)
             return '-'.join(parts)
-
         # Apply the function to the DataFrame
         df['Batch'] = df['Batch'].apply(replace_component)
         
-        # Extract and append client, product, and cycle information from the 'Batch' column
-        extracted_data = df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
+        # Change 2: Keep only one cycle (this may change)
+        extracted_data = df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)') # Extract and append client, product, and cycle information from the 'Batch' column
         extracted_data.columns = ['Client', 'Product', 'Cycle_']
         df = pd.concat([df, extracted_data], axis=1)
-
         # Truncate the 'Cycle_' column to get the first two characters and filter rows
         df['Cycle'] = df['Cycle_'].str[:2]
         df = df[df['Cycle'] == '52']  # Filter for rows where 'Cycle' is '52'
-        
         # Drop unnecessary columns from the DataFrame
         df.drop(['Client', 'Product', 'Cycle_', 'Cycle'], axis=1, inplace=True)
         
-        # Save the updated DataFrame to a CSV file, without the index
+        # Save the updated DataFrame
         df.to_csv(output_path, index=False)
-         
-        # Setup the file path
-        input_path = Path('input_raw') / 'TFInvSample.csv'
-        output_path = Path('input_staging') / 'TFInvSample.csv'
-
+        
+    def stage_tankInventory(self):
+        
+        # Setup the file paths
+        input_path  = self.dir_raw / self.filename_tankInventory
+        output_path = self.dir_stage / self.filename_tankInventory
+        
         # Read the CSV file
         df = pd.read_csv(input_path)
         
-        # Apply the function
-        df['Product'] = df['Product'].apply(mapping)
-        
+        # Change 1: Apply the mapping function to the Product column
+        df['Product'] = df['Product'].apply(self.mapping)
+   
+        # Change 2: If Volume is negative replace it with zero
         df = df.dropna(subset=['Product'])
         df['Volume'] = df['Volume'].where(df['Volume'] >= 0, 0)
         
-        # Save the updated DataFrame to a CSV file, without the index
+        # Save the output
         df.to_csv(output_path, index=False)
+    
+    def mapping(self, code):
+        if code in ['A2', 'A3', 'A4', 'A5', 'M3', 'M4', 'V4']:
+            return 'A'
+        elif code in ['D2', 'D3', 'D4']:
+            return 'D'
+        elif code in ['51', '56']:
+            return '54'
+        elif code in ['96']:
+            return '62'
+        else:
+            return code    
 
-    def truncate(self):
-        # Setup the file path
-        input_path = Path('input_raw') / 'TRM SxcheduleData.csv'
-        output_path = Path('input_raw') / 'lineSchedule.csv'
-
-        # Read the CSV file
-        df = pd.read_csv(input_path)
-
-        # Extract and append client, product, and cycle information from the 'Batch' column
-        extracted_data = df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
-        extracted_data.columns = ['Client', 'Product', 'Cycle_']
-        df = pd.concat([df, extracted_data], axis=1)
-
-        # Truncate the 'Cycle_' column to get the first two characters and filter rows
-        df['Cycle'] = df['Cycle_'].str[:2]
-        df = df[df['Cycle'] == '52']  # Filter for rows where 'Cycle' is '52'
-
-        # Drop unnecessary columns from the DataFrame
-        df.drop(['Client', 'Product', 'Cycle_', 'Cycle'], axis=1, inplace=True)
-
-        # Save the updated DataFrame to a CSV file, without the index
-        df.to_csv(output_path, index=False)
-
-        print("Filtered data saved to:", output_path)
+    def create_dimension_tanks(self):
         
+        """
+        In this function we build dim_tanks, i.e., a dimension table that will be the reference point for Tanks. 
+        The operation is primarily based on the tankInventory file. We perform the following operations:
+        
+        - Rename some of the existing columns
+        - Divide the volumes by 1000 and round to zero
+        - Add a 'LineIn' and 'LineOut' component describing the lines that go in and out of every Tank
+        
+        """
 
-    def create_location_tanks(self):
         # Setup file paths
-        base_input_path = Path('input_staging')
-        base_output_path = Path('input_location')
-        input_file = base_input_path / 'TFInvSample.csv'
-        output_file = base_output_path / 'dim_tanks.csv'
+        input_file   = self.dir_stage / self.filename_tankInventory
+        output_file  = self.dir_location / 'dim_tanks.csv'
 
         # Ensure the output directory exists
-        base_output_path.mkdir(parents=True, exist_ok=True)
+        #base_output_path.mkdir(parents=True, exist_ok=True)
 
-        # Function to read and group lines by tank
-        def group_lines(file_path, line_column_name):
-            df_lines = pd.read_csv(file_path, usecols=['Tank', 'Line'])
-            grouped = df_lines.groupby('Tank')['Line'].agg(list).reset_index()
-            return grouped.rename(columns={'Line': line_column_name})
-
-        # Read only the necessary columns from the main tank file
+        # Read only the necessary columns from file
         df = pd.read_csv(input_file, usecols=['Tank', 'Type', 'Product', 
                                               'Type', 'Out of Service',
                                               'Low Level', 'Normal Fill', 'Max Capacity'])
         
-        # Rename the column
+        # Rename columns
         df.rename(columns={'Low Level': 'Bottom',
                           'Normal Fill': 'Working',
                           'Max Capacity': 'Maximum'}, inplace=True)
@@ -152,78 +152,95 @@ class DataInputProcessing():
 
         # Divide by 100 and round to three decimal places
         df[columns_to_modify] = df[columns_to_modify].div(1000).round(0)
-
         df[columns_to_modify] = df[columns_to_modify] + 30
         
+        # Function to read and group lines by tank
+        def group_lines(file_path, line_column_name):
+            df_lines = pd.read_csv(file_path, usecols=['Tank', 'Line'])
+            grouped = df_lines.groupby('Tank')['Line'].agg(list).reset_index()
+            return grouped.rename(columns={'Line': line_column_name})
         
         # Process and merge line out data
-        line_out_path = base_output_path / 'topoO_ATJ.csv'
+        line_out_path = self.dir_location / 'topoO_ATJ.csv'
         line_out_data = group_lines(line_out_path, 'LineOut')
         df = df.merge(line_out_data, on='Tank', how='left')
 
         # Process and merge line in data
-        line_in_path = base_output_path / 'topoI_ATJ.csv'
+        line_in_path = self.dir_location / 'topoI_ATJ.csv'
         line_in_data = group_lines(line_in_path, 'LineIn')
         df = df.merge(line_in_data, on='Tank', how='left')
 
-        # Save to CSV without the index
+        # Save output
         df.to_csv(output_file, index=False)
         print("File saved to:", output_file)
+            
+    
+    def create_dimension_products(self):
 
-        # Read the CSV
-        #df_tanks = pd.read_csv('tanks_with_lines.csv')
+        '''
+         In this function we build dim_products, i.e., a dimension table that will be the reference point for Products. 
+         The operation is based on both the tankInventory (file1) and the lineSchedule (file2) files. 
+         We take the unique Products from file1 (df1), the unique products from the inbound file2 (df2) and the unique products from
+         outbount file2 (df3). Then we aggregate everything together to get a complete picture of all the products that show up in the 
+         input files
+        '''
+        
+        # Setup file paths
+        input_file1 = self.dir_stage / self.filename_tankInventory
+        input_file2 = self.dir_stage / self.filename_lineSchedule
+        output_file = self.dir_location / 'dim_products.csv'
+        
+        # Read file
+        tank_df = pd.read_csv(input_file1)
+        
+        # Get the unique products from file1 and put them into a dataframe
+        df1 = pd.DataFrame(tank_df['Product'].unique(), columns=['Product'])
+        df1['TankFile'] = True
 
-        # Convert the string back to a list
-        #df_tanks['Line'] = df_tanks['Line'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
+        # Read file2 and extract product details
+        line_df = pd.read_csv(input_file2)
+        line_df[['Client', 'Product', 'Cycle_']] = line_df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
 
-        # Display the DataFrame
-        #print(df_tanks)
+        # Break line_df into two pieces to produce df2 & df3. First get df2
+        line_in_df  = line_df[line_df['Line'].isin(['01', '02'])]
+        df2 = pd.DataFrame(line_in_df['Product'].unique(), columns=['Product'])
+        df2['LineIn'] = True
 
-    def create_location_products(self):
-        # Path setup with pathlib
-        base_path = Path('input_staging')
+        # And then df3
+        line_out_df = line_df[~line_df['Line'].isin(['01', '02'])]
+        df3 = pd.DataFrame(line_out_df['Product'].unique(), columns=['Product'])
+        df3['LineOut'] = True
 
-        # Read the first file and get unique products
-        tank_file_path = base_path / 'TFInvSample.csv'
-        tank_df = pd.read_csv(tank_file_path)
-        products_from_tank = pd.DataFrame(tank_df['Product'].unique(), columns=['Product'])
-        products_from_tank['TankFile'] = True
-
-        # Read the second file, extract product details, and handle line-specific logic
-        line_schedule_path = base_path / 'TRM SxcheduleData.csv'
-        line_schedule_df = pd.read_csv(line_schedule_path)
-        line_schedule_df[['Client', 'Product', 'Cycle_']] = line_schedule_df['Batch'].str.extract(r'(\w+)-(\w+)-(\w+)')
-
-        # Create filters based on 'Line'
-        line_in_df = line_schedule_df[line_schedule_df['Line'].isin(['01', '02'])]
-        line_out_df = line_schedule_df[~line_schedule_df['Line'].isin(['01', '02'])]
-
-        # Get unique products for each line category
-        products_line_in = pd.DataFrame(line_in_df['Product'].unique(), columns=['Product'])
-        products_line_in['LineIn'] = True
-
-        products_line_out = pd.DataFrame(line_out_df['Product'].unique(), columns=['Product'])
-        products_line_out['LineOut'] = True
-
-        # Concatenate and group by 'Product' to aggregate boolean columns
-        df_union = pd.concat([products_from_tank, products_line_in, products_line_out])
-        df_union = df_union.groupby('Product', as_index=False).max()
+        # Concatenate the three dataframes and group by 'Product' to aggregate boolean columns
+        df = pd.concat([df1, df2, df3])
+        df = df.groupby('Product', as_index=False).max()
 
         # Replace NaN with False in boolean columns
-        df_union.fillna(False, inplace=True)
+        df.fillna(False, inplace=True)
 
-        # Write to CSV in specified directory
-        output_path = Path('input_location') / 'dim_products.csv'
-        df_union.to_csv(output_path, index=False)
+        # save output
+        df.to_csv(output_file, index=False)
         
-        print(f"File saved to: {output_path}")
+        print(f"File saved to: {output_file}")
 
 
-    def create_location_lines(self):
-        input_path = Path('input_staging') / 'TRM SxcheduleData.csv'
+    def create_dimension_lines(self):
+        
+        '''
+         In this function we build dim_lines, i.e., a dimension table that will be the reference point for Lines. 
+         The operation is primarily based on the lineSchedule file. We perform the following operations:
+        
+        - Add a 'Tank' component describing the tanks associated with each Line
+        '''
+        
+        # Set up file paths
+        input_path = Path('input_staging') / self.filename_lineSchedule
         output_path = Path('input_location') / 'dim_lines.csv'
+        
+        # Ensure the output directory exists
+        #output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Read CSV file
+        # Read file
         df = pd.read_csv(input_path)
 
         # Extract and rename columns directly in the DataFrame
@@ -232,12 +249,11 @@ class DataInputProcessing():
         # Group by 'Line' and aggregate unique 'Products'
         result_df = df.groupby('Line')['Product'].agg(lambda x: sorted(set(x))).reset_index()
 
-        # Ensure the output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
+        # Attach a column indicating the Tanks associated with the Line
         df_tank = pd.read_csv('input_location/topoO_ATJ.csv', usecols=['Tank', 'Line'])
         grouped_tanks = df_tank.groupby('Line')['Tank'].agg(list).reset_index()
-        # # Merge back to the original tanks DataFrame
+        
+        # Merge back to the original tanks DataFrame
         result_df = result_df.merge(grouped_tanks, on='Line', how='left')
         
         # Save to CSV, excluding the index
@@ -246,56 +262,15 @@ class DataInputProcessing():
         # Print the result or confirmation message
         print(f"File saved to: {output_path}")
         
-#     def create_location_lines_v2(self):
 
-#         # Read the CSV
-#         df_lines = pd.read_csv('input_location/dim_lines.csv')
-
-#         # Clean the 'Tank' data by removing brackets and splitting correctly
-#         df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
-#         df_lines['Tank'] = df_lines['Tank'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
-
-#         # Explode the 'Tank' column
-#         df_lines_v2 = df_lines.explode('Tank')
-
-#         # Read the CSV
-#         df_tanks = pd.read_csv('input_location/dim_tanks.csv', usecols=['Tank', 'Product'])
-
-#         # Convert join columns to integers
-#         df_lines_v2['Tank'] = pd.to_numeric(df_lines_v2['Tank'], errors='coerce').fillna(-1).astype(int)
-#         df_tanks['Tank'] = pd.to_numeric(df_tanks['Tank'], errors='coerce').fillna(-1).astype(int)
-
-#         left_merged_df = pd.merge(df_lines_v2, df_tanks, on='Tank', how='left')
-#         #print("Left Merge:\n", left_merged_df)
-
-
-#         # Group by 'Line' and aggregate 'Product_y' into a list, excluding NaNs
-#         result_df = left_merged_df.groupby('Line').agg({
-#             'Product_x': 'first',  # Assuming Product_x should just be taken from the first occurrence
-#             'Tank': list,         # Aggregate all Tanks into a list
-#             'Product_y': lambda x: list(x.dropna().unique())  # Remove NaNs and get unique Product_y values
-#         }).reset_index()
-
-
-#         # Apply literal_eval safely
-#         def safe_literal_eval(s):
-#             try:
-#                 return literal_eval(s)
-#             except ValueError:
-#                 return []  # or return s if you want to keep as is when there's an error
-
-#         # Convert lists in 'Product_x' and 'Product_y' to sets and check if 'Product_x' is a subset of 'Product_y'
-#         result_df['Is_Subset'] = result_df.apply(lambda row: set(row['Product_x']).issubset(set(row['Product_y'])), axis=1)
-
-#         result_df.to_csv('input_location/mart_lines.csv', index=False)
 
         
-    def create_cycle_lineSchedule(self):
+    def create_fact_lineSchedule(self):
         
         #--------------------------------------------------------------------------------
         # Read the file
         #
-        filename = 'input_staging/TRM SxcheduleData.csv'
+        filename = 'input_staging/' + self.filename_lineSchedule
         df = pd.read_csv(filename)
 
         #--------------------------------------------------------------------------------
@@ -491,12 +466,11 @@ class DataInputProcessing():
         grouped_data.to_csv('input_cycle/processing/df_step6.csv')
         
         directory = 'input_cycle/v2'
-        grouped_data.to_csv(directory + '/LineSchedule.csv', index=False)
         grouped_data.to_csv(directory + '/fact_LineSchedule.csv', index=False)
             
-    def create_cycle_tankInventory(self):
+    def create_fact_tankInventory(self):
         
-        filename = 'input_staging/TFInvSample.csv'
+        filename = 'input_staging/' + self.filename_tankInventory
         df = pd.read_csv(filename)
         
         df['Cycle'] = '052'
@@ -505,9 +479,54 @@ class DataInputProcessing():
         df['Volume'] = (df['Volume'] / 1000).round(0) + 20
 
         directory = 'input_cycle/v2'
-        df.to_csv(directory + '/TankInventory.csv', index=False)
         df.to_csv(directory + '/fact_tanks.csv', index=False)
-             
+    
+    
+    
+#     def create_location_lines_v2(self):
+
+#         # Read the CSV
+#         df_lines = pd.read_csv('input_location/dim_lines.csv')
+
+#         # Clean the 'Tank' data by removing brackets and splitting correctly
+#         df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
+#         df_lines['Tank'] = df_lines['Tank'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
+
+#         # Explode the 'Tank' column
+#         df_lines_v2 = df_lines.explode('Tank')
+
+#         # Read the CSV
+#         df_tanks = pd.read_csv('input_location/dim_tanks.csv', usecols=['Tank', 'Product'])
+
+#         # Convert join columns to integers
+#         df_lines_v2['Tank'] = pd.to_numeric(df_lines_v2['Tank'], errors='coerce').fillna(-1).astype(int)
+#         df_tanks['Tank'] = pd.to_numeric(df_tanks['Tank'], errors='coerce').fillna(-1).astype(int)
+
+#         left_merged_df = pd.merge(df_lines_v2, df_tanks, on='Tank', how='left')
+#         #print("Left Merge:\n", left_merged_df)
+
+
+#         # Group by 'Line' and aggregate 'Product_y' into a list, excluding NaNs
+#         result_df = left_merged_df.groupby('Line').agg({
+#             'Product_x': 'first',  # Assuming Product_x should just be taken from the first occurrence
+#             'Tank': list,         # Aggregate all Tanks into a list
+#             'Product_y': lambda x: list(x.dropna().unique())  # Remove NaNs and get unique Product_y values
+#         }).reset_index()
+
+
+#         # Apply literal_eval safely
+#         def safe_literal_eval(s):
+#             try:
+#                 return literal_eval(s)
+#             except ValueError:
+#                 return []  # or return s if you want to keep as is when there's an error
+
+#         # Convert lists in 'Product_x' and 'Product_y' to sets and check if 'Product_x' is a subset of 'Product_y'
+#         result_df['Is_Subset'] = result_df.apply(lambda row: set(row['Product_x']).issubset(set(row['Product_y'])), axis=1)
+
+#         result_df.to_csv('input_location/mart_lines.csv', index=False)    
+    
+    
 class DataLocation:
     
     def __init__(self):
