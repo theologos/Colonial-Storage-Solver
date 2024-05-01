@@ -584,12 +584,35 @@ class DataLocation:
             
     def validation_master(self):
         
+        self.validation_level0()
         self.validation_level1_dim_tanks()
         self.validation_level1_dim_lines()
         self.validation_level1_dim_products()
         self.validation_level2_1()
         self.validation_level2_2()
         
+    def validation_level0(self):
+        """
+        Validates whether key tables contain the expected columns and raises a value error otherwise.
+        """
+        required_columns = ['Tank', 'Type', 'Product', 'Working', 'LineOut', 'LineIn']
+        df = self.dim_tanks
+        missing_columns = [column for column in required_columns if column not in df.columns]
+        if missing_columns:
+            raise ValueError("Error (validation_level0): Columns are missing from dim_tanks.")
+            
+        required_columns = ['Product']
+        df = self.dim_products
+        missing_columns = [column for column in required_columns if column not in df.columns]
+        if missing_columns:
+            raise ValueError("Error (validation_level0): Columns are missing from dim_products.")
+            
+        required_columns = ['Line', 'Product']
+        df = self.dim_lines
+        missing_columns = [column for column in required_columns if column not in df.columns]
+        if missing_columns:
+            raise ValueError("Error (validation_level0): Columns are missing from dim_lines.")    
+    
     def validation_level1_dim_tanks(self):
         """
         Validates that the 'Tank' column in the 'dim_tanks' DataFrame is suitable for use as a primary key.
@@ -606,7 +629,6 @@ class DataLocation:
         nan_counts = self.dim_tanks[columns_to_check].isna().sum()
         if nan_counts.any():
             raise ValueError("Error (validation_level1_dim_tanks): NULL values detected")        
-
       
     def validation_level1_dim_products(self):
         """
