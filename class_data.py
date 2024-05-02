@@ -738,23 +738,50 @@ class DataCycle(DataLocation):
         """
         super().__init__()  # Call the parent class constructor
         
+        self.fact_tanks        = self.load_csv('input_cycle/v2/fact_tanks.csv')
         self.fact_LineSchedule = self.load_csv('input_cycle/v2/fact_LineSchedule.csv')
-        self.fact_tanks         = self.load_csv('input_cycle/v2/fact_tanks.csv')
-    
+        
         self.CycleStart = self.fact_LineSchedule['Datetime'].min()
         self.T          = int(max(self.fact_LineSchedule['Time']) - min(self.fact_LineSchedule['Time']) + 1)
         self.Time       = list(range(self.T))
 
-        # Perform data validations
-        #self.validation_volume()
-        #self.validation_tanks()
-        #self.validation_lineFlows()
+        self.validation_1_master()
         
     def load_csv(self, filepath):
         # Read the CSV file
         df_read = pd.read_csv(filepath, encoding="ISO-8859-1")
         return df_read    
 
+    def validation_1_master(self):
+        self.validation_level1_fact_tanks()
+        self.validation_level2()
+    
+    def validation_level1_fact_tanks(self):
+        """
+        Validates that the 'Tank' column in the 'fact_tanks' DataFrame is suitable for use as a primary key.
+        The column must contain unique non-null values only.
+        Raises:
+            ValueError: If non-null values in the 'Tank' column are not unique.
+                        If certain columns have null values
+        """
+        col = 'Tank'
+        if not self.fact_tanks[col].is_unique or self.fact_tanks[col].isnull().any():
+            raise ValueError("Error (validation_level1_fact_tanks): The primary key is not unique or contains NULL values.")
+            
+        columns_to_check = ['Tank', 'Volume']
+        nan_counts = self.fact_tanks[columns_to_check].isna().sum()
+        if nan_counts.any():
+            raise ValueError("Error (validation_level1_fact_tanks): NULL values detected")
+            
+    def validation_level2(self):
+        """
+        """
+        unique_col1 = set(self.dim_tanks['Tank'].unique())
+        unique_col2 = set(self.fact_tanks['Tank'].unique())
+        if not unique_col1 == unique_col2:
+            raise ValueError("Error (class_cycle.validation_level2): The primary key are not the same between dim and fact tank.")
+             
+    
     def validation_volume(self):
         """
         Validates the volumes for the cycle, checking for inconsistencies or negative values.
