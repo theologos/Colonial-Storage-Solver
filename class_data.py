@@ -583,6 +583,7 @@ class DataLocation:
             
     def validation_master(self):
         
+        print("\n***** Start of Validation Procedures *****")
         self.validation_level0_dim()
         self.validation_level1_dim_tanks()
         self.validation_level1_dim_lines()
@@ -769,6 +770,7 @@ class DataCycle(DataLocation):
         self.validation_level1_fact_tanks()
         self.validation_level2_fact()
         self.validation_level2_fact_lineFlows()
+        print("***** Validation Procedures executed successfully ***** \n")
     
     def validation_level1_fact_tanks(self):
         """
