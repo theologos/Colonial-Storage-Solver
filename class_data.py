@@ -22,7 +22,7 @@ class DataInputProcessing():
         self.dir_raw               = Path('input_raw')
         self.dir_stage             = Path('input_staging')
         self.dir_location          = Path('input_location')
-        self.dir_cycle             = Path('input_cycle/v2')  
+        self.dir_cycle             = Path('input_cycle')  
         self.filename_lineSchedule  = 'TRM SxcheduleData.csv'
         self.filename_tankInventory = 'TFInvSample.csv'
         
@@ -299,6 +299,10 @@ class DataInputProcessing():
                 current_super_batch = None
 
             # Assign the current SuperBatch value to the row
+            #df.at[index, 'SuperBatch'] = current_super_batch
+            # Convert the 'SuperBatch' column to string type
+            df['SuperBatch'] = df['SuperBatch'].astype(str)
+            # Now, assigning the string should not raise an error
             df.at[index, 'SuperBatch'] = current_super_batch
 
         df.to_csv('input_cycle/processing/df_step1.csv')
@@ -336,8 +340,14 @@ class DataInputProcessing():
 
         df_start = new_rows_df[new_rows_df['Event Type'] == 'BATCHSTART'].copy()
 
-        df_start['Start'] = pd.to_datetime(df_start['Start Date Time'])
-        df_start['Stop']   = pd.to_datetime(df_start['Stop Date Time'])
+        #df_start['Start'] = pd.to_datetime(df_start['Start Date Time'])
+        #df_start['Stop']   = pd.to_datetime(df_start['Stop Date Time'])
+
+        # Convert 'Stop Date Time' column to datetime using a specified format
+        df_start['Start'] = pd.to_datetime(df_start['Start Date Time'], format="%m/%d/%Y %I:%M:%S %p")
+        df_start['Stop'] = pd.to_datetime(df_start['Stop Date Time'], format="%m/%d/%Y %I:%M:%S %p")
+
+
 
         df_start.to_csv('input_cycle/processing/df_step2.csv')
         
@@ -474,6 +484,8 @@ class DataInputProcessing():
         
         # Save to file
         grouped_data.to_csv(output_path, index=False)
+
+        print(f"File saved to: {output_path}")
             
     def create_fact_tank(self):
         
@@ -498,6 +510,8 @@ class DataInputProcessing():
 
         # Output file
         df.to_csv(output_path, index=False)
+
+        print(f"File saved to: {output_path}")
         
 class DataLocation:
     
@@ -686,7 +700,8 @@ class DataLocation:
         df_lines = self.dim_lines
 
         # Clean the 'Tank' data by removing brackets and splitting correctly
-        df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
+        #df_lines['Tank'] = df_lines['Tank'].str.replace('[\[\]]', '', regex=True)  # Remove brackets
+        df_lines['Tank'] = df_lines['Tank'].str.replace('\\[\\]', '', regex=True)  # Remove brackets
         df_lines['Tank'] = df_lines['Tank'].apply(lambda x: x.split(', ') if pd.notna(x) else [])
 
         # Explode the 'Tank' column
@@ -750,8 +765,8 @@ class DataCycle(DataLocation):
         """
         super().__init__()  # Call the parent class constructor
         
-        self.fact_tanks        = self.load_csv('input_cycle/v2/fact_tanks.csv')
-        self.fact_LineSchedule = self.load_csv('input_cycle/v2/fact_LineSchedule.csv')
+        self.fact_tanks        = self.load_csv('input_cycle/fact_tanks.csv')
+        self.fact_LineSchedule = self.load_csv('input_cycle/fact_LineSchedule.csv')
         
         self.CycleStart = self.fact_LineSchedule['Datetime'].min()
         self.T          = int(max(self.fact_LineSchedule['Time']) - min(self.fact_LineSchedule['Time']) + 1)
