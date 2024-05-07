@@ -152,7 +152,7 @@ class DataInputProcessing():
 
         # Divide by 100 and round to three decimal places
         df[columns_to_modify] = df[columns_to_modify].div(1000).round(0)
-        df[columns_to_modify] = df[columns_to_modify] + 30
+        df[columns_to_modify] = df[columns_to_modify] + 30 # Here you can change the capacity
         
         # Function to read and group lines by tank
         def group_lines(file_path, line_column_name):
@@ -260,7 +260,6 @@ class DataInputProcessing():
         def getType(line):
             if line in ['01', '02']:
                 return 'In'
-            
             else:
                 return 'Out'
         result_df['Type'] = result_df['Line'].apply(getType)
@@ -506,7 +505,7 @@ class DataInputProcessing():
         df['Cycle'] = '052'
         df = df[['Cycle', 'Tank', 'Product', 'Volume']]
         df['Volume'] = df['Volume'].where(df['Volume'] >= 0, 0)
-        df['Volume'] = (df['Volume'] / 1000).round(0) + 20
+        df['Volume'] = (df['Volume'] / 1000).round(0) + 20 # 
 
         # Output file
         df.to_csv(output_path, index=False)
@@ -627,7 +626,7 @@ class DataLocation:
         if missing_columns:
             raise ValueError("Error (validation_level0): Columns are missing from dim_lines.")
 
-        print("validation_level0_dim was executed successully")    
+        print("validation_level0_dim was executed successfully")    
     
     def validation_level1_dim_tanks(self):
         """
@@ -646,7 +645,7 @@ class DataLocation:
         if nan_counts.any():
             raise ValueError("Error (validation_level1_dim_tanks): NULL values detected")
 
-        print("validation_level1_dim_tanks was executed successully")          
+        print("validation_level1_dim_tanks was executed successfully")          
       
     def validation_level1_dim_products(self):
         """
@@ -660,7 +659,7 @@ class DataLocation:
         if not is_ok:
             raise ValueError("Error (validation_level1_dim_products): The primary key is not unique or contains NULL values.")
         
-        print("validation_level1_dim_products was executed successully") 
+        print("validation_level1_dim_products was executed successfully") 
           
     def validation_level1_dim_lines(self):
         """
@@ -681,7 +680,7 @@ class DataLocation:
         if nan_counts.any():
             raise ValueError("Error (validation_level1_dim_lines): NULL values detected")
         
-        print("validation_level1_dim_lines was executed successully") 
+        print("validation_level1_dim_lines was executed successfully") 
             
     def validation_level2_dim_1(self):
         
@@ -740,18 +739,18 @@ class DataLocation:
         result_df['is_subset'] = result_df.apply(is_subset, axis=1)        
         #print("result_df:\n", result_df)
 
-        print("validation_level2_dim_2 was executed successully")
+        print("validation_level2_dim_2 was executed successfully")
 
     def print(self):
-            print("\n------- Topology I -------")
-            print(self.topo_i)
-            print("\n------- dim Tanks -------")
-            print(self.dim_tanks)
-            print("\n------- dim Lines -------")
-            print(self.dim_lines)
-            print("\n------- dim Products -------")
-            print(self.dim_products)
-            
+        print("\n------- Topology I -------")
+        print(self.topo_i)
+        print("\n------- dim Tanks -------")
+        print(self.dim_tanks)
+        print("\n------- dim Lines -------")
+        print(self.dim_lines)
+        print("\n------- dim Products -------")
+        print(self.dim_products)
+        
 
 class DataCycle(DataLocation):
     
@@ -783,8 +782,10 @@ class DataCycle(DataLocation):
         super().validation_master()
         # Now add additional functionality
         self.validation_level1_fact_tanks()
-        self.validation_level2_fact()
-        self.validation_level2_fact_lineFlows()
+        self.validation_level2_fact_1()
+        self.validation_level2_fact_2()
+        self.validation_level2_fact_3()
+        self.validation_level2_fact_4()
         print("***** Validation Procedures executed successfully ***** \n")
     
     def validation_level1_fact_tanks(self):
@@ -804,18 +805,8 @@ class DataCycle(DataLocation):
         if nan_counts.any():
             raise ValueError("Error (validation_level1_fact_tanks): NULL values detected")
         
-        print("validation_level1_fact_tanks was executed successully")
-            
-    def validation_level2_fact(self):
-        """
-        """
-        unique_col1 = set(self.dim_tanks['Tank'].unique())
-        unique_col2 = set(self.fact_tanks['Tank'].unique())
-        if not unique_col1 == unique_col2:
-            raise ValueError("Error (class_cycle.validation_level2): The primary key are not the same between dim and fact tank.")
-        
-        print("validation_level2_fact was executed successully")
-             
+        print("validation_level1_fact_tanks was executed successfully")
+
     # def _validate_volume_data(self, data, label):
     #     """
     #     Helper method to validate volume data and accumulate volumes by product.
@@ -836,7 +827,7 @@ class DataCycle(DataLocation):
     #     product_volumes = {key: sum(page.get(key, 0) for page in data.values()) for key in product_to_sum}
     #     setattr(self, f'volumes_{label.lower()}', product_volumes)
 
-    def validation_level2_fact_lineFlows(self):
+    def validation_level2_fact_1(self):
         """
         Validates line flows by summarizing hourly volumes per line and product, then calculates net volumes
         by comparing these sums against existing volumes. Raises an error if net volumes are negative.
@@ -908,16 +899,67 @@ class DataCycle(DataLocation):
         final_df['Net'] = final_df['Exist'] + final_df.get('In', 0) - final_df.get('Out', 0)
 
         # Optionally, set the result as an attribute for further use or inspection
-        #setattr(self, f'volumes_net_flows', final_df)
+        setattr(self, f'fact_summary_net', final_df)
 
         # Check for negative net volumes and raise an error if found
         if (final_df['Net'] < 0).any():
             print(final_df)
             raise ValueError("Net volume contains negative values!")
         
-        print("validation_level2_fact_lineFlows was completed successfully. The flow summary is: \n", final_df)
+        print("validation_level2_fact_1 was completed successfully. The flow summary is: \n", final_df)
             
-            
+    def validation_level2_fact_2(self):
+
+        # Aggregate 'Hourly_Vol' by 'Time', 'Line', 'Product' and compute in/out sign.
+        # 'num' should be 'np' for NumPy which is typically used for such operations.
+        a = self.fact_LineSchedule
+        a = (a.groupby(['Time', 'Line', 'Product'])
+            .agg(Hourly_Vol=('Hourly_Vol', 'sum'))
+            .reset_index())
+
+        # Determine 'Type' and 'Sign', then adjust 'Hourly_Vol'.
+        a['Sign'] = num.where(a['Line'].isin(['01', '02']), 1, -1)
+        a['Hourly_Vol'] *= a['Sign']  # Apply 'Sign' directly in the computation.
+
+        # Sum 'Hourly_Vol' by 'Time' and 'Product', compute cumulative volume.
+        a = (a.groupby(['Time', 'Product'])
+            .agg(Hourly_Vol=('Hourly_Vol', 'sum'))
+            .reset_index())
+        a['Cumulative_Vol'] = a.groupby('Product')['Hourly_Vol'].cumsum()
+
+        # Merge with 'fact_summary_net', compute 'Net', and handle missing values.
+        a = a.merge(self.fact_summary_net, on='Product', how='left').fillna(0)
+        a['Net'] = a['Exist'] + a['Cumulative_Vol']
+
+        if (a['Net'] < 0).any():
+            #print(a[a['Net'] < 0])
+            raise ValueError("Error (class_cycle.validation_level2_fact_2)")
+        
+        print("validation_level2_fact_2 was executed successfully")
+
+
+    def validation_level2_fact_3(self):
+        """
+        """
+        unique_col1 = set(self.dim_tanks['Tank'].unique())
+        unique_col2 = set(self.fact_tanks['Tank'].unique())
+        if not unique_col1 == unique_col2:
+            raise ValueError("Error (class_cycle.validation_level2_fact_3): The primary key are not the same between dim and fact tank.")
+        
+        print("validation_level2_fact_3 was executed successfully")  
+
+
+    def validation_level2_fact_4(self):
+        """
+        """
+        a = self.dim_tanks.merge(self.fact_tanks, on="Tank", how="left")
+        filtered_df = a[a['Volume'] > a['Working']]
+        if not filtered_df.empty:
+            raise ValueError("Error (class_cycle.validation_level2_fact_4): ")
+        
+        print("validation_level2_fact_4 was executed successfully")       
+
+
 class DataOptimization(DataCycle):
     def __init__(self):
         
