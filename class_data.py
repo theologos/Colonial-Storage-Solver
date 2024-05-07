@@ -509,7 +509,6 @@ class DataLocation:
         
         # Directly assign the dictionaries returned from the function
         self.topo_i, self.topo_o = self.load_topology()
-        self.validation_master()
     
     def load_csv(self, filepath):
         try:
@@ -584,14 +583,14 @@ class DataLocation:
             
     def validation_master(self):
         
-        self.validation_level0()
+        self.validation_level0_dim()
         self.validation_level1_dim_tanks()
         self.validation_level1_dim_lines()
         self.validation_level1_dim_products()
-        self.validation_level2_1()
-        self.validation_level2_2()
+        self.validation_level2_dim_1()
+        self.validation_level2_dim_2()
         
-    def validation_level0(self):
+    def validation_level0_dim(self):
         """
         Validates whether key tables contain the expected columns and raises a value error otherwise.
         """
@@ -611,7 +610,9 @@ class DataLocation:
         df = self.dim_lines
         missing_columns = [column for column in required_columns if column not in df.columns]
         if missing_columns:
-            raise ValueError("Error (validation_level0): Columns are missing from dim_lines.")    
+            raise ValueError("Error (validation_level0): Columns are missing from dim_lines.")
+
+        print("validation_level0_dim was executed successully")    
     
     def validation_level1_dim_tanks(self):
         """
@@ -628,7 +629,9 @@ class DataLocation:
         columns_to_check = ['Type', 'Product', 'Working', 'LineOut', 'LineIn']
         nan_counts = self.dim_tanks[columns_to_check].isna().sum()
         if nan_counts.any():
-            raise ValueError("Error (validation_level1_dim_tanks): NULL values detected")        
+            raise ValueError("Error (validation_level1_dim_tanks): NULL values detected")
+
+        print("validation_level1_dim_tanks was executed successully")          
       
     def validation_level1_dim_products(self):
         """
@@ -641,6 +644,8 @@ class DataLocation:
         is_ok = self.dim_products[col].is_unique or self.dim_products[col].isnull().any()
         if not is_ok:
             raise ValueError("Error (validation_level1_dim_products): The primary key is not unique or contains NULL values.")
+        
+        print("validation_level1_dim_products was executed successully") 
           
     def validation_level1_dim_lines(self):
         """
@@ -660,17 +665,21 @@ class DataLocation:
         nan_counts = self.dim_lines[columns_to_check].isna().sum()
         if nan_counts.any():
             raise ValueError("Error (validation_level1_dim_lines): NULL values detected")
+        
+        print("validation_level1_dim_lines was executed successully") 
             
-    def validation_level2_1(self):
+    def validation_level2_dim_1(self):
         
         if not list(self.topo_i.keys()) == list(self.topo_o.keys()):
             raise ValueError("Error: Input and Output topology keys are not the same.")
             
         tanks = self.dim_tanks['Tank'].tolist()
         if not list(self.topo_i.keys()) == sorted(tanks):
-            raise ValueError("Error: Topology and Tank keys do not match.")   
+            raise ValueError("Error: Topology and Tank keys do not match.")  
+
+        print("validation_level2_dim_1 was executed successully") 
         
-    def validation_level2_2(self):
+    def validation_level2_dim_2(self):
 
         # Read the CSV
         df_lines = self.dim_lines
@@ -713,7 +722,9 @@ class DataLocation:
 
         # Apply this function to each row
         result_df['is_subset'] = result_df.apply(is_subset, axis=1)        
-        print("result_df:\n", result_df)
+        #print("result_df:\n", result_df)
+
+        print("validation_level2_dim_2 was executed successully")
 
     def print(self):
             print("\n------- Topology I -------")
@@ -744,17 +755,20 @@ class DataCycle(DataLocation):
         self.CycleStart = self.fact_LineSchedule['Datetime'].min()
         self.T          = int(max(self.fact_LineSchedule['Time']) - min(self.fact_LineSchedule['Time']) + 1)
         self.Time       = list(range(self.T))
-
-        self.validation_1_master()
         
     def load_csv(self, filepath):
         # Read the CSV file
         df_read = pd.read_csv(filepath, encoding="ISO-8859-1")
         return df_read    
 
-    def validation_1_master(self):
+    def validation_master(self):
+        
+        # Call the parent class's show method first
+        super().validation_master()
+        # Now add additional functionality
         self.validation_level1_fact_tanks()
-        self.validation_level2()
+        self.validation_level2_fact()
+        self.validation_level2_fact_lineFlows()
     
     def validation_level1_fact_tanks(self):
         """
@@ -772,76 +786,45 @@ class DataCycle(DataLocation):
         nan_counts = self.fact_tanks[columns_to_check].isna().sum()
         if nan_counts.any():
             raise ValueError("Error (validation_level1_fact_tanks): NULL values detected")
+        
+        print("validation_level1_fact_tanks was executed successully")
             
-    def validation_level2(self):
+    def validation_level2_fact(self):
         """
         """
         unique_col1 = set(self.dim_tanks['Tank'].unique())
         unique_col2 = set(self.fact_tanks['Tank'].unique())
         if not unique_col1 == unique_col2:
             raise ValueError("Error (class_cycle.validation_level2): The primary key are not the same between dim and fact tank.")
-             
-    
-    def validation_volume(self):
-        """
-        Validates the volumes for the cycle, checking for inconsistencies or negative values.
-        """
-        self._validate_volume_data(self.CycleVolExist, 'Exist') # Creates an object volums_exist
-        self._validate_volume_data(self.CycleVolOut2, 'Out') # Creates an object volums_out
-        self._validate_volume_data(self.CycleVolIn2, 'In') # Creates an object volums_in
-
-        self._calculate_net_volume()
-
-    def _validate_volume_data(self, data, label):
-        """
-        Helper method to validate volume data and accumulate volumes by product.
-        This function dynamically creates an attribute to the DataCycle object. The name of the attribute is determined by the label parameter, 
-        ensuring that different aspects of the cycle's volume (exist, in, out) data can be stored and accessed separately. 
-        This flexibility allows the class to handle multiple types of volume data in a structured and consistent manner.
-        Example: data = {'13': {'54': 6.0, '62': 58.0}, '14': {'62': 24.0, 'A': 144.0}, '15': {'A': 196.0, 'D': 79.0}, 
-                         '16': {'54': 127.0}, '17': {'A': 156.0}, '18': {'54': 12.0, '62': 60.0, 'A': 381.0, 'D': 43.0}, 
-                         '19': {'A': 389.0, 'D': 56.0}, '1A': {'A': 52.0, 'D': 9.0}, '20': {'54': 35.0, '62': 30.0}, 
-                         '2A': {'62': 13.0}
-                        }
-                 
-                 product_to_sum  = {'D', '62', 'A', '54'}
-                 product_volumes = {'A': 1318.0, '54': 180.0, 'D': 187.0, '62': 185.0}
-                 Creates an object self.volumes_out = {'A': 1318.0, '54': 180.0, 'D': 187.0, '62': 185.0}
-        """
-        product_to_sum = {prod for page in data.values() for prod in page}
-        product_volumes = {key: sum(page.get(key, 0) for page in data.values()) for key in product_to_sum}
-        setattr(self, f'volumes_{label.lower()}', product_volumes)
-
-    def _calculate_net_volume(self):
-        """
-        Calculates and validates the net volume from existing, incoming, and outgoing volumes.
-        Example:
-        volumes_exist = {'54': 36.0, '62': 105.0, 'D': 90.0, 'A': 159.0}
-        volumes_in    = {'54': 324.0, '62': 365.0, 'D': 213.0, 'A': 1418.0}
-        volumes_out   = {'54': 180.0, '62': 185.0, 'D': 187.0, 'A': 1318.0}
-
-        validation_volume:
-            Exist      In     Out    Net
-        54   36.0   324.0   180.0  180.0
-        62  105.0   365.0   185.0  285.0
-        D    90.0   213.0   187.0  116.0
-        A   159.0  1418.0  1318.0  259.0
-        """
-        df = pd.DataFrame([self.volumes_exist, self.volumes_in, self.volumes_out]).T
-        df.columns = ['Exist', 'In', 'Out']
-        df['Net'] = df['Exist'] + df['In'] - df['Out']
-
-        setattr(self, f'volumes_net', df)
         
-        if (df['Net'] < 0).any():
-            raise ValueError("Net volume contains negative values!")
+        print("validation_level2_fact was executed successully")
+             
+    # def _validate_volume_data(self, data, label):
+    #     """
+    #     Helper method to validate volume data and accumulate volumes by product.
+    #     This function dynamically creates an attribute to the DataCycle object. The name of the attribute is determined by the label parameter, 
+    #     ensuring that different aspects of the cycle's volume (exist, in, out) data can be stored and accessed separately. 
+    #     This flexibility allows the class to handle multiple types of volume data in a structured and consistent manner.
+    #     Example: data = {'13': {'54': 6.0, '62': 58.0}, '14': {'62': 24.0, 'A': 144.0}, '15': {'A': 196.0, 'D': 79.0}, 
+    #                      '16': {'54': 127.0}, '17': {'A': 156.0}, '18': {'54': 12.0, '62': 60.0, 'A': 381.0, 'D': 43.0}, 
+    #                      '19': {'A': 389.0, 'D': 56.0}, '1A': {'A': 52.0, 'D': 9.0}, '20': {'54': 35.0, '62': 30.0}, 
+    #                      '2A': {'62': 13.0}
+    #                     }
+                 
+    #              product_to_sum  = {'D', '62', 'A', '54'}
+    #              product_volumes = {'A': 1318.0, '54': 180.0, 'D': 187.0, '62': 185.0}
+    #              Creates an object self.volumes_out = {'A': 1318.0, '54': 180.0, 'D': 187.0, '62': 185.0}
+    #     """
+    #     product_to_sum = {prod for page in data.values() for prod in page}
+    #     product_volumes = {key: sum(page.get(key, 0) for page in data.values()) for key in product_to_sum}
+    #     setattr(self, f'volumes_{label.lower()}', product_volumes)
 
-    def validation_lineFlows(self):
+    def validation_level2_fact_lineFlows(self):
         """
         Validates line flows by summarizing hourly volumes per line and product, then calculates net volumes
         by comparing these sums against existing volumes. Raises an error if net volumes are negative.
 
-        df:
+        The resulting dataframe looks like that:
         Product        In       Out   Exist      Net
         54        324.007   179.020   36.0   180.987
         62        364.983   181.969   105.0  288.014
@@ -877,10 +860,11 @@ class DataCycle(DataLocation):
         21   20      62      29.274
         22   2A      62      12.499
         '''
-        grouped_flows = self.CycleVolLineFlows.groupby(['Line', 'Product'])['Hourly_Vol'].sum().reset_index()
 
+        grouped_flows = self.fact_LineSchedule.groupby(['Line', 'Product'])['Hourly_Vol'].sum().reset_index()
         # Determine flow direction (In/Out) based on Line value and add as a new column
         grouped_flows['Type'] = num.where(grouped_flows['Line'].isin(['01', '02']), 'In', 'Out')
+        pivot_flows = grouped_flows.pivot_table(index='Product', columns='Type', values='Hourly_Vol', aggfunc='sum', fill_value=0).reset_index()
 
         '''
          Pivot the DataFrame to have Products as rows and the sum of In/Out volumes as columns
@@ -891,11 +875,9 @@ class DataCycle(DataLocation):
           A             1417.993  1316.337
           D             212.153   186.499
         '''
-        pivot_flows = grouped_flows.pivot_table(index='Product', columns='Type', values='Hourly_Vol', aggfunc='sum', fill_value=0).reset_index()
-
-        # Merge existing volume data into the pivoted DataFrame
-        df_existing_volumes = pd.DataFrame.from_dict(self.volumes_exist, orient='index', columns=['Exist']).reset_index().rename(columns={'index': 'Product'})
-        final_df = pivot_flows.merge(df_existing_volumes, on='Product', how='left').fillna(0)
+        
+        exist = self.fact_tanks.groupby(['Product'])['Volume'].sum().reset_index().rename(columns={'Volume': 'Exist'})
+        final_df = exist.merge(pivot_flows, on='Product', how='left').fillna(0)
 
         ''' 
         # Calculate net volume and add as a new column
@@ -909,32 +891,22 @@ class DataCycle(DataLocation):
         final_df['Net'] = final_df['Exist'] + final_df.get('In', 0) - final_df.get('Out', 0)
 
         # Optionally, set the result as an attribute for further use or inspection
-        setattr(self, f'volumes_net_flows', final_df)
+        #setattr(self, f'volumes_net_flows', final_df)
 
         # Check for negative net volumes and raise an error if found
         if (final_df['Net'] < 0).any():
             print(final_df)
             raise ValueError("Net volume contains negative values!")
-            
         
-    def print(self):
-            print("\n------- T -------")
-            print(self.T)
-            print("\n------- volumes_exist -------")
-            print(self.volumes_exist)
-            print("\n------- volumes_in -------")
-            print(self.volumes_in)
-            print("\n------- volumes_out -------")
-            print(self.volumes_out)
-            print("\n------- volumes_net -------")
-            print(self.volumes_net)
-            print("\n------- volumes_net_flows -------")
+        print("validation_level2_fact_lineFlows was completed successfully. The flow summary is: \n", final_df)
+            
             
 class DataOptimization(DataCycle):
     def __init__(self):
         
         # Call the constructor of the parent class
         super().__init__()
+        super().validation_master()
         
         self.index = self.function_index(self.Time, self.topo_i, self.topo_o)
                             

@@ -72,7 +72,3 @@ if __name__ == "__main__":
 
         print("*************** Results ***************")
         #print("Optimization Status ->>> " + ret['Status'])
-        
-        print(optimization.fact_tanks)
-        
-        #print(is_unique)
