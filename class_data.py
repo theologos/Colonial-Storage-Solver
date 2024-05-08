@@ -957,6 +957,7 @@ class DataCycle(DataLocation):
         if not filtered_df.empty:
             raise ValueError("Error (class_cycle.validation_level2_fact_4): ")
         
+        print(a)
         print("validation_level2_fact_4 was executed successfully")       
 
 

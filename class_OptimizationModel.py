@@ -72,7 +72,7 @@ class OptimizationModel:
         lst = list(set([(t[0],t[2]) for t in x_index])) 
         for tup in lst:
             tank = tup[0]; time = tup[1];
-            model.addConstr(x.sum(tank, '*', time) <= capacity[tank] + 20)         
+            model.addConstr(x.sum(tank, '*', time) <= capacity[tank] + 0)         
 
         #-------------------------------------------------------------------------------------------------------------    
         # Flow Balance constraints
