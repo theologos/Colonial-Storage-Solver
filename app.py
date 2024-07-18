@@ -68,8 +68,8 @@ if __name__ == "__main__":
         print("--------------------------------------")
         
         # Call the optimization model
-        #ret = OptimizationModel.model_stage3(ID, inputs)
+        ret = OptimizationModel.model_stage3(ID, inputs)
 
         print("*************** Results ***************")
-        #print("Optimization Status ->>> " + ret['Status'])
+        print("Optimization Status ->>> " + ret['Status'])
         

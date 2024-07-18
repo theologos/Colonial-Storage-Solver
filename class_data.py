@@ -152,7 +152,7 @@ class DataInputProcessing():
 
         # Divide by 100 and round to three decimal places
         df[columns_to_modify] = df[columns_to_modify].div(1000).round(0)
-        df[columns_to_modify] = df[columns_to_modify] + 30 # Here you can change the capacity
+        df[columns_to_modify] = df[columns_to_modify] + 80 # 30 Here you can change the capacity
         
         # Function to read and group lines by tank
         def group_lines(file_path, line_column_name):
@@ -505,7 +505,7 @@ class DataInputProcessing():
         df['Cycle'] = '052'
         df = df[['Cycle', 'Tank', 'Product', 'Volume']]
         df['Volume'] = df['Volume'].where(df['Volume'] >= 0, 0)
-        df['Volume'] = (df['Volume'] / 1000).round(0) + 20 # 
+        df['Volume'] = (df['Volume'] / 1000).round(0) + 50 # 20
 
         # Output file
         df.to_csv(output_path, index=False)
@@ -957,7 +957,7 @@ class DataCycle(DataLocation):
         if not filtered_df.empty:
             raise ValueError("Error (class_cycle.validation_level2_fact_4): ")
         
-        print(a)
+        #print(a)
         print("validation_level2_fact_4 was executed successfully")       
 
 
